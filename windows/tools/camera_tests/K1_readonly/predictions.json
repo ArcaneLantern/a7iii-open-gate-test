@@ -1,0 +1,15 @@
+{
+ "kit": "m3kit1_v1",
+ "camera": "ILCE-7M3, firmware 4.04",
+ "written": "2026-11-24, before any contact with an A7 III",
+ "basis": "a7m3_map FINDINGS.md M3-F002, F006, F011, F027 (static analysis of the 4.04 update)",
+ "predictions": [
+  {"id": "P1", "claim": "The camera in Mass Storage mode answers PMCA-RE's start request and comes back as a service device with USB id 054C:0336 (the A7 IV's), or 054C:02A9.", "source": "M3-F006 (same Senser gadget); A7 IV CT1"},
+  {"id": "P2", "claim": "Authentication with PMCA-RE's public keys passes on the service device: three rounds answered 4, closing answer 6.", "source": "M3-F006: libsencore holds the A7 IV's three key blocks byte for byte"},
+  {"id": "P3", "claim": "READ_HASP answers.", "source": "A7 IV CT1"},
+  {"id": "P4", "claim": "/usr/share/pmbp/DeviceInfo.xml is 517 bytes, SHA-256 e44713178fad970870ead845c93abdfcf150c418de11b306da91f2d09d67c1b7 (the same file as the A7 IV's).", "source": "4.04 update"},
+  {"id": "P5", "claim": "/usr/lib/libJiritsu.so, /usr/lib/libsencore.so, /usr/codec/vcd_firmware.bin and /system/av-cam.bin equal the 4.04 update's files (sizes and SHA-256 in expected_404.json).", "source": "4.04 update; mount.conf (/usr = nflasha15, /system = nflasha3)"},
+  {"id": "P6", "claim": "/setting/DmmConfig.bin exists and equals update/0800_appli/setting/DmmConfig.bin. Low confidence: the installed copy may differ or be missing.", "source": "4.04 update; mount.conf (/setting = nflasha2)"},
+  {"id": "P7", "claim": "/proc/cpuinfo and /proc/iomem come back with no content (the file read sizes a file with stat, and /proc files report size 0).", "source": "libJiritsu.so calls __xstat; A7 IV CT1 /proc/cmdline came back empty"}
+ ]
+}

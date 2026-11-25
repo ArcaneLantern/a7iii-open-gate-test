@@ -1,0 +1,149 @@
+{
+ "kit": "m3kit1_v1",
+ "files": {
+  "windows/tools/camera_tests/K1_readonly/m3_check.py": {
+   "source": "a7m3_map/camera_tests/K1_readonly/m3_check.py",
+   "sha256": "480fe6a4c94ce303de7a9100d2a3e3431fb022f5d6f13f78589671369fdb472d"
+  },
+  "windows/tools/camera_tests/K1_readonly/expected_404.json": {
+   "source": "a7m3_map/camera_tests/K1_readonly/expected_404.json",
+   "sha256": "1b80f64e5338fd0a169524b9a872e0781e0208ebfec463c58bcb6d5b8c2cf6fd"
+  },
+  "windows/tools/camera_tests/K1_readonly/predictions.json": {
+   "source": "a7m3_map/camera_tests/K1_readonly/predictions.json",
+   "sha256": "3503307424e442afc351adfaf01f92f813048d72d4c846695d30d318191d63e0"
+  },
+  "windows/tools/camera_tests/CT1_usb_first_contact/ct1_common.py": {
+   "source": "a7siii-open-gate-test/windows/tools/camera_tests/CT1_usb_first_contact/ct1_common.py",
+   "sha256": "1f7b2a6552487ad83f7b49fae551e3d4ef2fe5efc1f79a573967134b86dabcd1"
+  },
+  "windows/tools/camera_tests/CT1_usb_first_contact/ct1_stage2_service.py": {
+   "source": "a7siii-open-gate-test/windows/tools/camera_tests/CT1_usb_first_contact/ct1_stage2_service.py",
+   "sha256": "bd1d8ae9646493b25ae6c94aead32d92827f569b095a98eee0f3f3c0c4085915"
+  },
+  "windows/tools/camera_tests/CT1_usb_first_contact/ct1_sim.py": {
+   "source": "a7siii-open-gate-test/windows/tools/camera_tests/CT1_usb_first_contact/ct1_sim.py",
+   "sha256": "e8656944f529b0326f4f770504c93236a9a19ff8d2d4e7ece7d13f234ae4db98"
+  },
+  "windows/tools/camera_tests/CT1_usb_first_contact/ct1_compare.py": {
+   "source": "a7siii-open-gate-test/windows/tools/camera_tests/CT1_usb_first_contact/ct1_compare.py",
+   "sha256": "f9c400a03eb7b1ff0ba3c4f94a9a2574a643a33d8b5113f9a4129a1a9f9c2e20"
+  },
+  "windows/tools/camera_tests/CT1_usb_first_contact/ct1_predict.py": {
+   "source": "a7siii-open-gate-test/windows/tools/camera_tests/CT1_usb_first_contact/ct1_predict.py",
+   "sha256": "45d61b6c729b1900915ef21fb7e5d269f59e158db0e5404518ebfb923ba03d3d"
+  },
+  "windows/tools/third_party/sony-pmca-re/LICENSE.txt": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/LICENSE.txt",
+   "sha256": "f40fa84ebd3c1329fc6f4b75c11af9df6b19ae9a0485a02e85a5eeb476fcd94e"
+  },
+  "windows/tools/third_party/sony-pmca-re/PINNED.json": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/PINNED.json",
+   "sha256": "50a829c8faf3a1846bec8d766efb1c318c2e4b41c0e5ffd18d43e6302e1ca665"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/__init__.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/__init__.py",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/__init__.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/__init__.py",
+   "sha256": "f4c856b505a6c62bf841bb6f662990ba1ea12b46e7984430463bea4dca60eae6"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/constants.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/constants.py",
+   "sha256": "345f0184fe0127b61cd8ef6f861c513e43468b6f8f926304eda960450870a912"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/crypto.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/crypto.py",
+   "sha256": "4cae5195d85d20142f674c7073c7c5ae34c10b39fb834a6851f0b77fc55236b5"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/driver/__init__.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/driver/__init__.py",
+   "sha256": "bd855bc35a812e56e2ce9810390e75d5444890a47825d11ae6a51090b97bdbec"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/driver/generic/__init__.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/driver/generic/__init__.py",
+   "sha256": "4a521b34a320e2dc062977e81811b5f277faf87f5f4a928532ecc370a1ba167a"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/driver/generic/libusb.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/driver/generic/libusb.py",
+   "sha256": "ed9dc95d5ae76e579f74e44d3ee29c77f822a890a21dfff4533dd47545a88ea3"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/driver/generic/qemu.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/driver/generic/qemu.py",
+   "sha256": "d92c06961e3548877004f2394787beecf454bb1efabe1f8c465b3075a19c9ed6"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/driver/osx.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/driver/osx.py",
+   "sha256": "d970eb9ab76f0af64078d068376f06f6fc5d95be9391330dab347acd0966a5c2"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/driver/windows/__init__.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/driver/windows/__init__.py",
+   "sha256": "6b1a46f814c2c8ede7d79217781e6a1c25ac311191038ff4ef4bc21cf1ca43c7"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/driver/windows/driverless.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/driver/windows/driverless.py",
+   "sha256": "5021554f430019bb2073fd7c335fc25f46c4b67031839373a1c7e49cc92ffdfc"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/driver/windows/msc.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/driver/windows/msc.py",
+   "sha256": "5d4f114eff7fd87d8017f001a15dffb136414f0ee29493be66cc6ce134735b98"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/driver/windows/setupapi.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/driver/windows/setupapi.py",
+   "sha256": "553e0a9694cdaff6fa3e94ee82931e1ecf32bc39c7fb6e469619e293bff906e4"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/driver/windows/wpd.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/driver/windows/wpd.py",
+   "sha256": "c94aaf7aed158729581c2365052ab15d1c5855ce815ad1955a22e0dce36ee801"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/usb/sony.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/usb/sony.py",
+   "sha256": "4ac3abcd796f5ca6bcf18179065bddef1cc0e2d7201fc6a458fc6c53bdaf541c"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/util/__init__.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/util/__init__.py",
+   "sha256": "26b5d9bfb2155197edb949ec25f39fc62a87c6318f6a0057ad159331480ca493"
+  },
+  "windows/tools/third_party/sony-pmca-re/pmca/util/http.py": {
+   "source": "a7siii-open-gate-test/windows/tools/third_party/sony-pmca-re/pmca/util/http.py",
+   "sha256": "e4a2ea7f6b2aba30213f9b80292a65c99a0c9558a48a86923a60d9bfea7bc6da"
+  },
+  "windows/check_readonly.cmd": {
+   "source": "a7m3_map/publish/templates/check_readonly.cmd",
+   "sha256": "32d9b1a633f05e787f4bb6f1c49659625a8c91d19db89975ee339351b5ce323e"
+  },
+  "windows/selftest.cmd": {
+   "source": "a7m3_map/publish/templates/selftest.cmd",
+   "sha256": "a9541604f3d49a2334114a1065c9377c3b13ba95200642f9d6ab8b85fb02ef04"
+  },
+  "windows/list_devices.cmd": {
+   "source": "a7m3_map/publish/templates/list_devices.cmd",
+   "sha256": "d940bd4f01a70e01880b0cda1b7317298a709a97a5e6351794cb113b8431e3c3"
+  },
+  "README.md": {
+   "source": "a7m3_map/publish/templates/README.md",
+   "sha256": "b265fa698751ec6346b0470ccb1d0c8818b03cb99ebae9c6f25fc8681861f8b4"
+  },
+  "windows/setup.cmd": {
+   "source": "a7siii-open-gate-test/windows/setup.cmd",
+   "sha256": "7356ebb404221a07e31979b6ff344e98c353fb355bf7e6bfd56dfe8ec694c2f7"
+  },
+  "windows/requirements.txt": {
+   "source": "a7siii-open-gate-test/windows/requirements.txt",
+   "sha256": "1f530f82a3b8d87b501ddd143f9b7b74f7891dbef0358c3290f03c4a25ee0094"
+  },
+  "LICENSE": {
+   "source": "a7siii-open-gate-test/LICENSE",
+   "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+  },
+  ".gitattributes": {
+   "source": "a7siii-open-gate-test/.gitattributes",
+   "sha256": "2db57b94543b0584daae9acf31d9aea897761f5e11b50482df8badcf105b570a"
+  },
+  ".gitignore": {
+   "source": "a7siii-open-gate-test/.gitignore",
+   "sha256": "989e69588fbdf8001f628ae662224da9191f50ba5fdd8f031131b58d0705265a"
+  }
+ }
+}

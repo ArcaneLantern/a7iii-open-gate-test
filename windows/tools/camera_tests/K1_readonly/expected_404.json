@@ -1,0 +1,37 @@
+{
+ "build": "ILCE-7M3 4.04 (model 0x71030014)",
+ "files": {
+  "/usr/share/pmbp/DeviceInfo.xml": {
+   "bytes": 517,
+   "sha256": "e44713178fad970870ead845c93abdfcf150c418de11b306da91f2d09d67c1b7",
+   "from_update": "0700_part_image/dev/nflasha15/share/pmbp/DeviceInfo.xml"
+  },
+  "/usr/lib/libJiritsu.so": {
+   "bytes": 154284,
+   "sha256": "f4ba0aaf0b45455cd004effdbbfffdfcaba825e7d14a4ae9a935c523573d202a",
+   "from_update": "0700_part_image/dev/nflasha15/lib/libJiritsu.so"
+  },
+  "/usr/lib/libsencore.so": {
+   "bytes": 333580,
+   "sha256": "905ffd3f4ed923ab00e8571faafe84271c9783059d0f50672c81275648236092",
+   "from_update": "0700_part_image/dev/nflasha15/lib/libsencore.so"
+  },
+  "/usr/codec/vcd_firmware.bin": {
+   "bytes": 5445340,
+   "sha256": "18b06ba859d7849c702b3d77c9e86c9141f29b70c0989aa036758dc8f1c09cb2",
+   "from_update": "0700_part_image/dev/nflasha15/codec/vcd_firmware.bin"
+  },
+  "/system/av-cam.bin": {
+   "bytes": 18449784,
+   "sha256": "e1b0f84e8323005a34b43de6dd0083fca712d2c654f0d9716512e0a54631bbe7",
+   "from_update": "0700_part_image/dev/nflasha3/av-cam.bin"
+  },
+  "/setting/DmmConfig.bin": {
+   "bytes": 76524,
+   "sha256": "3de50aead57d7ceb4d39e0ba75073d0c8c316707d65cbeb42c46faa326685262",
+   "from_update": "update/0800_appli/setting/DmmConfig.bin"
+  },
+  "/proc/cpuinfo": null,
+  "/proc/iomem": null
+ }
+}
