@@ -53,7 +53,13 @@ The settings backup is **not** read, because it would carry personal data. Large
    - The first run switches the camera to service mode, where it shows up as a new device, probably `054C:0336`. It does not stay there long enough to do this by hand. So beforehand, in Zadig: Device → Create New Device, any name, USB ID `054C` `0336`, libusb-win32, Install Driver.
    - `windows/list_devices.cmd` shows what Windows and libusb see. It sends nothing.
 
-macOS is not supported by this kit yet.
+## macOS users
+
+1. You must have python 3.10 or later (if you have Xcode Tools that works too, run xcode-select --install in terminal if you're unsure)
+2. Run macos/setup.command by dragging it into your terminal window, running it directly from finder usually results in a ton of permissions errors.
+3. Run macos/selftest.command the same way.
+4. Run macos/list_devices.command the same way too.
+5. Run macos/check_readonly.command. This reads all the read only data required for testing.
 
 ## The run
 
