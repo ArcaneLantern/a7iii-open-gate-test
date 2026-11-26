@@ -27,7 +27,7 @@ ROOT = HERE.parents[2]
 AVCAM = ROOT / 'work' / 'extracted' / 'a7m3_404' / '0700_part_image' / 'dev' / 'nflasha3' / 'av-cam.bin'
 KEMCO = ROOT / 'work' / 'extracted' / 'a7m3_404' / 'update' / '0800_appli' / 'setting' / 'kemco.txt'
 DESIGN = ROOT / 'modding' / 'designs' / 'og_m3_v2.json'
-LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'putback')}
+LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'putback', 'norestart', 'nocheck')}
 
 BASE, STACK, STACK_SZ, RET = 0x10000000, 0x7E000000, 0x100000, 0x7F000000
 AV_PHYS, AV_END, KLOG_PHYS, KLOG_LEN = 0x035C6000, 0x048C6000, 0x035A5000, 0x20000
@@ -302,7 +302,7 @@ def main():
         print(text)
         return
 
-    N_MEM = 14 + 6                                                    # 14 read-only ranges + the six blocks
+    N_MEM = 17 + 6                                                    # 17 read-only ranges + the six blocks
     # 1. dump on a stock camera
     cam = Camera()
     r, t = run('dump', cam)
@@ -319,6 +319,7 @@ def main():
           'dump: application log copied as text, MAC address blanked, binary runs squeezed to one dot')
     check('== dir /sys/module/liro/parameters' in t and '= 0x035c6000' in t, 'dump: liro parameters listed with values')
     check(t.count('== mem ') == N_MEM and '== mem sgc1_param' in t and '== mem refresh_state' in t and '== mem timing_rt_ntsc' in t
+          and '== mem cam_flags' in t and '== mem cam_status' in t and '== mem sync_stamps' in t and 'GUARD flag byte 0x00  refresh loop STOCK' in t
           and t.rstrip().split('\n')[-1].startswith('== done'), 'dump: %d memory ranges (new: SGC1 block, refresh state, timing blocks) and the done line' % N_MEM)
     check(list(cam.created) == ['/tmp_network/m3og_result.txt'], 'dump: result on /tmp_network (RAM)')
     # 1b. the first camera run: the first image pages hold live data. They are reported and the run goes on
@@ -408,6 +409,43 @@ def main():
     cam = cam_from(v2_state)
     r, t = run('test2', cam)
     check('READY (test 2 applied)' in t and bytes(cam.mem) == mem['test2'], 'test2 over the v2 test-2 state: completes it')
+    # 5c. v4: the refresh loop's switch byte (bit 0x40 = no forced restart, bit 0x02 = loop off); other bits are kept
+    G = P(0x6433CD5E)
+    for name, bit, word in (('norestart', 0x40, 'refresh loop on, NO FORCED RESTART'), ('nocheck', 0x02, 'refresh loop OFF')):
+        cam = cam_from(mem['test4'])
+        cam.mem[G] = 0x81
+        r, t = run(name, cam)
+        check(not r.bad and 'DONE: 0x00000001 bytes' in t and cam.mem[G] == (0x81 | bit) and diff(cam.mem, mem['test4']) == [G]
+              and len(cam.writes) == 1 and 'READY (test 4 applied)' in t and t.count('GUARD flag byte') == 2 and word in t,
+              '%s over test 4: one byte written, only bit %#04x set, the test bytes untouched' % (name, bit))
+        cam2 = cam_from(bytes(cam.mem))
+        r, t = run(name, cam2)
+        check('NOTHING TO DO' in t and not cam2.writes, '%s again: NOTHING TO DO, no write' % name)
+        r, t = run('dump', cam_from(bytes(cam.mem)))
+        check(word in t and 'READY (test 4 applied)' in t, 'dump after %s: reports "%s"' % (name, word))
+        cam = Camera(system=None)
+        r, t = run(name, cam)
+        check('DONE: ' in t and cam.mem[G] == bit, '%s needs no TV-system slot: DONE' % name)
+        cam = Camera()
+        cam.mem[P(0x637B4000)] ^= 0xFF
+        r, t = run(name, cam)
+        check('NOT DONE: av-cam identity' in t and not cam.writes, '%s with a differing code range: NOT DONE, no write' % name)
+    cam = cam_from(mem['test4'])
+    cam.mem[G] = 0x81 | 0x42
+    r, t = run('putback', cam)
+    d = diff(cam.mem)
+    check(not r.bad and 'guard: switch bits cleared' in t and 'DONE: ' in t and 'READY (stock)' in t and d == [G] and cam.mem[G] == 0x81
+          and 'refresh loop STOCK' in t.split('after:')[-1],
+          'putback after test 4 + both switches: blocks equal 4.04, both switch bits cleared, the other bits kept')
+    cam = Camera()
+    cam.mem[G] = 0x40
+    r, t = run('putback', cam)
+    check('DONE: 0x00000001 bytes written in 0x00000001 runs' in t and bytes(cam.mem) == bytes(stock), 'putback with only a switch set: one byte, memory equals 4.04')
+    cam = Camera(system=None)
+    cam.mem[G] = 0x02
+    r, t = run('putback', cam)
+    check('guard: switch bits cleared' in t and cam.mem[G] == 0 and 'NOT DONE: the TV system slot' in t,
+          'putback with no recognisable TV-system slot: the switch is still cleared')
     # 6. identity differs -> nothing written; the dump still reads the tables if the header matches
     cam = Camera()
     cam.mem[P(0x637B4000)] ^= 0xFF

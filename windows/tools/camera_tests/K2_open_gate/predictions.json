@@ -1,8 +1,8 @@
 {
- "kit": "m3kit2_v3",
+ "kit": "m3kit2_v4",
  "camera": "ILCE-7M3, firmware 4.04",
- "written": "2026-11-26, before any kit-2 contact with an A7 III (kit 1 v2 had confirmed 4.04 and the MOUNT -> file route, M3-F032); v2 revisions of Q2/Q4 after the v1 run, before any v2 run; v3 claims Q9-Q12 written 2026-11-26 after the v2 run and before any v3 run",
- "basis": "a7m3_map FINDINGS.md M3-F030..F041, modding/OG_M3_V2.md (static analysis and emulation of the 4.04 update; two camera runs)",
+ "written": "2026-11-26, before any kit-2 contact with an A7 III (kit 1 v2 had confirmed 4.04 and the MOUNT -> file route, M3-F032); v2 revisions of Q2/Q4 after the v1 run, before any v2 run; v3 claims Q9-Q12 written 2026-11-26 after the v2 run and before any v3 run; v4 claims Q13-Q15 written 2026-11-27 after the v3 run and before any v4 run",
+ "basis": "a7m3_map FINDINGS.md M3-F030..F042, modding/OG_M3_V2.md (static analysis and emulation of the 4.04 update; three camera runs)",
  "predictions": [
   {
    "id": "Q1",
@@ -63,8 +63,24 @@
    "id": "Q12",
    "claim": "After a forced restart the application log ring (phys 0x03524FC0, 0x60040 bytes) read by the next dump still holds av-cam's lines from before the restart, among them \"S-Ele Refresh!\" and one of \"Lost CAMOUT_V ...\", \"RCV overflow VD Seq Refresh!\" or \"SDVGA_SRC overflow VD Seq Refresh!\". Medium-low: the ring lies inside a warm-boot memory range (wbimem 0x500000@0x03085000), so the restart may overwrite it; the kernel log ring outside that range did survive.",
    "source": "M3-F040; kernel command line"
+  },
+  {
+   "id": "Q13",
+   "claim": "norestart sets bit 0x40 of byte 0x6433cd5e (stock value expected 0x00) and reads it back. With test 4 + norestart the camera stays on in movie mode; the picture may hiccup at each refresh (the loop re-sends the sensor state). Medium: the bit is tested right before the forced stop (ands r7,#0x40 at 0x6393578a), but nothing has shown yet that the byte keeps its value while the camera runs.",
+   "source": "M3-F042"
+  },
+  {
+   "id": "Q14",
+   "claim": "The dump after that movie try reads a refresh counter (0x643548dc) far above 10 and the sticky byte 0x64688aa9 = 1 (the lost-CAMOUT_V path ran). Low-medium: the alternatives are the status byte 0x6433aa4f bits 0x81 or the overflow flags 0x64688ab7/ab8.",
+   "source": "M3-F040, M3-F042"
+  },
+  {
+   "id": "Q15",
+   "claim": "With nocheck (bit 0x02) the picture is steady in movie mode at test 4 and at test 2, and the clip records. Low-medium: the picture was seen for a second with the loop running, so frames do arrive; whether every frame arrives is not known.",
+   "source": "M3-F042"
   }
  ],
  "v1_outcome": "first tester (macOS), 2026-11-26, dump/test1/test2 sessions M3K2_20261126T045229Z/045343Z/045448Z: Q1 held (SET_FILE2 status 0, library loaded and deleted, result read); Q2: /ramdsk does not exist in service mode, the result came from /tmp/jiritsu as designed; Q3 held (euid 0, /dev/mem opens); Q4 held for the address: LIRO header at 0x035C6000 and imager_code / fe_selector_code SAME, liro parameter adr = 0x635C6000; but the first 64 KB (image_start) differed, with a different hash in each run (live data), so the v1 identity check refused and test1/test2 wrote nothing; Q5-Q8 not reached. CPU: 4 x Cortex-A5 (part 0xc05), VFPv3-D16/VFPv4, no NEON.",
- "v2_outcome": "first tester (macOS), 2026-11-26, seven sessions M3K2_20261126T060019Z..060648Z (dump, test1, dump, putback, dump, test2, dump): Q1-Q5 held in every session (result on /tmp_network, header and both code ranges SAME, one live image page, READY (stock)); Q6: test1 DONE, the tester reported no crash and no stutter in movie mode (whether the picture was shifted is not known: no frame received); the dump 79 s later still read TEST1 with uptime running on, so RAM patches survive leaving service mode; putback DONE, READY (stock); Q7 FAILED: test2 DONE (0x107 bytes in 0x89 runs), then the camera restarted about 1 s after the stop request when movie mode started: kernel oops in task liro-kliro_101 at pc 0x639357b0 (str r7,[r7], r7 = 0) = the forced stop after \"S-Ele Refresh ng force exception\" (refresh counter > 10); Q8: the restart itself restored 4.04 (dump 40 s later: all blocks STOCK, movie-mode staging 373/1706/4/0x11/0x17)."
+ "v2_outcome": "first tester (macOS), 2026-11-26, seven sessions M3K2_20261126T060019Z..060648Z (dump, test1, dump, putback, dump, test2, dump): Q1-Q5 held in every session (result on /tmp_network, header and both code ranges SAME, one live image page, READY (stock)); Q6: test1 DONE, the tester reported no crash and no stutter in movie mode (whether the picture was shifted is not known: no frame received); the dump 79 s later still read TEST1 with uptime running on, so RAM patches survive leaving service mode; putback DONE, READY (stock); Q7 FAILED: test2 DONE (0x107 bytes in 0x89 runs), then the camera restarted about 1 s after the stop request when movie mode started: kernel oops in task liro-kliro_101 at pc 0x639357b0 (str r7,[r7], r7 = 0) = the forced stop after \"S-Ele Refresh ng force exception\" (refresh counter > 10); Q8: the restart itself restored 4.04 (dump 40 s later: all blocks STOCK, movie-mode staging 373/1706/4/0x11/0x17).",
+ "v3_outcome": "second tester (Windows, 50-system camera), 2026-11-26, kit 1 v2: 4.04 CONFIRMED; kit 2 v3 sessions M3K2_20261126T120640Z..122544Z (dump, test2, dump, test3, dump, test4, dump): Q9 held (TV system 50, slot 27; six blocks STOCK); Q10/Q11: each of test2, test3, test4 DONE and READY (test N applied); in movie mode the open-gate picture showed for about 1 s, then the same forced restart (pc 0x639357b0, task liro-kliro_101); each restart restored stock. So the matched timing pair gives a picture at every height and the line rate is not the limit, but the refresh loop still runs every frame. Q12 FAILED: alog.txt was 14 bytes (\"MAIN.EVENTS\") in every dump: the ring holds no av-cam text."
 }

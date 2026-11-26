@@ -1,6 +1,21 @@
 # A7 III open-gate test kits (firmware 4.04)
 
-## Kit 2 v3 (2026-11-26): open-gate tests and debug dump
+## Kit 2 v4 (2026-11-27): open-gate tests and debug dump
+
+**v4, after the third run.** A second tester ran v3 on a 50-system (PAL) camera. Tests 2, 3 and 4 each wrote correctly and each showed the open-gate picture on the screen for about a second after the dial went to movie. Then the camera restarted itself at the same place as in the earlier run (`0x639357b0`), and was stock again. So with the timing pair matched, the picture path works at all three heights, and the line rate is not what stops it. What stops it is the firmware's output-sync refresh loop: something starts it every frame, and after ten retries in a row it forces the restart.
+
+The firmware has two switches of its own for that loop, in one byte it reads every frame: bit 0x40 = retry but never force the restart, bit 0x02 = do nothing. v4 adds them as steps:
+
+| Step | Launcher | Writes to RAM | What it does |
+| --- | --- | --- | --- |
+| no restart | `open_gate_norestart` | 1 bit | The loop keeps retrying; the camera stays on. The next dump reads how often it retried and whether its lost-sync latch was set. |
+| no check | `open_gate_nocheck` | 1 bit | The loop is off. Shows whether the picture and the clip are good when it is left alone. |
+
+Put back clears both. The dump now also copies the object holding that byte, the status byte that can start the loop, and the firmware's own time stamps of the sensor frame, the output sync and its stand-in. The application log copy of v3 came back empty on the camera (the ring holds no av-cam text), so it tells us nothing; it is still copied.
+
+What is still not known is which of the loop's three triggers fires, and why. The v4 run is built to answer the first.
+
+### What v3 changed (still in the kit)
 
 **v3, after the second run.** On the first tester's camera, v2's test 1 (the sensor reads its whole height) ran with no fault. v2's test 2 restarted the camera when movie mode started. The dump taken right after the restart holds the fault in the kernel log: the firmware's own forced stop, `S-Ele Refresh ng force exception`, which it runs after ten failed attempts to restart a lost output sync. The restart reloaded the camera's program, so everything was stock again without a battery pull.
 
@@ -8,7 +23,7 @@ The firmware shows a likely cause. Test 2 made the front-end records 624 lines t
 
 **Tester steps: [K2_TEST.md](K2_TEST.md).** Everything is changed only in the camera's working memory (RAM). The put-back step, a restart, or a battery pull undoes it.
 
-Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built six times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
+Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built eight times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
 
 | Step | Launcher | Picture rows | Squeeze | Line period (59.94 / 50 system) | Line rate above stock |
 | --- | --- | --- | --- | --- | --- |
@@ -43,11 +58,11 @@ The test design (`og_m3_v2`) comes from the 4.04 firmware:
 - The front-end record of the 4K full-frame mode holds 65 height fields and the vertical scaler step.
 - The camera core's drive table holds the cycle pair. In every movie and live-view mode that has one, its line count covers the whole sensor frame and the pair fits inside the frame time. The new line periods leave the gap the 50 system leaves in stock.
 - The firmware's own code, run in an emulator, programs the new window and builds the drive table from the new pair. The one extra byte it changes is written too.
-- The six helper builds were run in an emulator against the 4.04 memory image: 72 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, and a full application log staying under the RAM disk's size.
+- The eight helper builds were run in an emulator against the 4.04 memory image: 91 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, the two switch steps (one bit each, other bits kept, cleared by put back), and a full application log staying under the RAM disk's size.
 
 What is not known: whether the pair is the only thing the camera core needs, and whether the front end keeps up with the shorter line period. If a test restarts the camera, the dump taken right after now includes the application log, where the firmware writes which check gave up.
 
-On the A7 III so far: v1 confirmed the location and wrote nothing. v2 test 1 passed; v2 test 2 restarted the camera. The v3 steps have not run yet.
+On the A7 III so far: v1 confirmed the location and wrote nothing. v2 test 1 passed; v2 test 2 restarted the camera. v3 tests 2 to 4 (second tester, 50 system) each gave a picture for about a second, then the forced restart. The v4 switch steps have not run yet.
 
 Commands, from `windows` (after `setup.cmd`):
 
@@ -154,4 +169,4 @@ On the first tester's camera, the service-mode login and `READ_HASP` worked (kit
 
 ## Licence and third-party code
 
-`windows/tools/third_party/sony-pmca-re` holds the unmodified USB transport files of [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE), pinned by checksum (`PINNED.json`). The `CT1_usb_first_contact` scripts are the A7 IV / A7S III kits' guarded USB layer, copied unchanged (`PROVENANCE.json`). No Sony firmware file is included. Kit 1 carries only sizes and checksums. Kit 2's helper (`m3og_design.h`, and the six libraries built from it) carries the 4.04 contents of the three small tables it checks and changes: the sensor register list (5,496 bytes), two front-end records (1,344 bytes each) and two 8-byte timing rows, plus checksums of two code ranges and 16 pages.
+`windows/tools/third_party/sony-pmca-re` holds the unmodified USB transport files of [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE), pinned by checksum (`PINNED.json`). The `CT1_usb_first_contact` scripts are the A7 IV / A7S III kits' guarded USB layer, copied unchanged (`PROVENANCE.json`). No Sony firmware file is included. Kit 1 carries only sizes and checksums. Kit 2's helper (`m3og_design.h`, and the eight libraries built from it) carries the 4.04 contents of the three small tables it checks and changes: the sensor register list (5,496 bytes), two front-end records (1,344 bytes each) and two 8-byte timing rows, plus checksums of two code ranges and 16 pages.
