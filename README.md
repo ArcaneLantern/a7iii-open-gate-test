@@ -1,10 +1,12 @@
 # A7 III open-gate test kits (firmware 4.04)
 
-## Kit 2 (2026-11-26): first open-gate test and debug dump
+## Kit 2 v2 (2026-11-26): first open-gate test and debug dump
+
+**v2, after the first run.** On the first tester's camera, all three v1 steps loaded and ran, and wrote nothing. The dump confirmed that `av-cam` sits exactly where the kit expected it: the program header and both deeper code ranges were identical to 4.04. But v1 also required the first 64 KB of the program to match, and that area holds data that changes while the camera runs (three runs, three different checksums). So test 1 and test 2 answered `NOT DONE: av-cam identity not confirmed`. v2 no longer requires that area. It reports it page by page instead. The other checks are unchanged. **Run the v2 steps from the start (K2_TEST.md), beginning with the dump.**
 
 **Tester steps: [K2_TEST.md](K2_TEST.md).** Kit 1 v2 confirmed that the first tester's camera runs exactly the 4.04 software and that its service file commands work. Kit 2 is the first step that changes something, and only in the camera's working memory (RAM). A battery pull undoes it.
 
-Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built four times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to the camera's RAM disk (`/ramdsk`), from where it is read back and deleted.
+Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built four times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
 
 | Step | Windows / macOS launcher | Writes to RAM | What it does |
 | --- | --- | --- | --- |
@@ -14,7 +16,7 @@ Each step is one service session that loads a small helper library on the camera
 | put back | `open_gate_putback` | the 4.04 bytes | Undoes test 1 or test 2 |
 
 **Safety rules built into the helper:**
-- It writes nothing unless the program header and three code ranges in memory equal the 4.04 file.
+- It writes nothing unless the program header and two code ranges (96 KB) in memory equal the 4.04 file. The first 64 KB of the program are only reported, because they hold live data.
 - Every byte of the three tables it touches must hold either its 4.04 value or the step's target.
 - It writes only where those two differ, reads each write back, and puts everything back on any mismatch.
 - The read-only dump build contains no write call at all.
@@ -26,9 +28,9 @@ Each step is one service session that loads a small helper library on the camera
 The test design (`og_m3_v1`) comes from the 4.04 firmware:
 - The IMX410 register list sets each drive mode's vertical window (registers 0x0728–0x072B).
 - The LEO front-end record of the 4K full-frame mode holds 65 height fields and the vertical scaler step.
-- The firmware's own register-list code, run in an emulator, programs the new window. The four helper builds were run in an emulator against the 4.04 memory image: 39 checks, including roll-back and every refusal.
+- The firmware's own register-list code, run in an emulator, programs the new window. The four helper builds were run in an emulator against the 4.04 memory image: 42 checks, including roll-back, every refusal, and the live first pages seen on the camera.
 
-None of this has run on an A7 III yet.
+On the A7 III so far: v1 loaded and ran on the first tester's camera and confirmed the location, but wrote nothing (see above). The v2 test steps have not run yet.
 
 Commands, from `windows` (after `setup.cmd`):
 

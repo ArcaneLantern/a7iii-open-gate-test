@@ -4,7 +4,7 @@
     python -I -B emu_m3og.py --show dump     print the dump's result text
 
 The model camera: physical memory with av-cam.bin at 0x035C6000 (its reservation up to 0x048C6000 zero-filled) and a
-kernel-log ring at 0x035A5000; /dev/mem served by pread64/pwrite64; a small /proc and /sys; /ramdsk and /tmp/jiritsu.
+kernel-log ring at 0x035A5000; /dev/mem served by pread64/pwrite64; a small /proc and /sys; /tmp_network (RAM tmpfs) and /tmp/jiritsu.
 The library is loaded as the dynamic linker would (PT_LOAD segments, R_ARM_RELATIVE relocations) and its DT_INIT_ARRAY
 entries are called. Every system call the library makes is handled here; any other one fails the run.
 """
@@ -34,7 +34,7 @@ EEXIST, ENOENT, EBADF, EFAULT, ENOTDIR = 17, 2, 9, 14, 20
 class Camera:
     """The model camera's memory and files."""
 
-    def __init__(self, ramdsk=True, devmem=True):
+    def __init__(self, tmpfs=True, devmem=True):
         img = AVCAM.read_bytes()
         self.mem = bytearray(KLOG_LEN) + bytearray(AV_PHYS - KLOG_PHYS - KLOG_LEN) + bytearray(img) + bytearray(AV_END - AV_PHYS - len(img))
         self.mem_base = KLOG_PHYS
@@ -46,9 +46,9 @@ class Camera:
                       '/proc/cpuinfo': b'Processor\t: ARMv7 Processor rev 1 (v7l)\nFeatures\t: swp half thumb fastmult vfp edsp vfpv3 vfpv3d16\nSerial\t\t: 0123456789abcdef\n',
                       '/proc/meminfo': b'MemTotal: 1 kB\n', '/proc/uptime': b'12.00 10.00\n',
                       '/sys/module/liro/parameters/adr': b'0x035c6000\n'}
-        self.dirs = {'/sys/module/liro/parameters': ['adr'], '/ramdsk': ['jiritsu.dat'], '/tmp/jiritsu': ['libJit.so']}
-        if not ramdsk:
-            del self.dirs['/ramdsk']
+        self.dirs = {'/sys/module/liro/parameters': ['adr'], '/tmp_network': [], '/tmp/jiritsu': ['libJit.so']}
+        if not tmpfs:
+            del self.dirs['/tmp_network']
         self.devmem = devmem
         self.created = {}
         self.fail_write_at = None
@@ -144,7 +144,7 @@ class Run:
                     return -EEXIST
                 if d not in cam.dirs:
                     return -ENOENT
-                if path not in ('/ramdsk/m3og_result.txt', '/tmp/jiritsu/m3og_result.txt'):
+                if path not in ('/tmp_network/m3og_result.txt', '/tmp/jiritsu/m3og_result.txt'):
                     raise AssertionError('creates ' + path)
                 cam.created[path] = bytearray()
                 self.fds[fd] = ('out', path)
@@ -263,13 +263,23 @@ def main():
     cam = Camera()
     r, t = run('dump', cam)
     check(not r.bad, 'dump: runs to the end (%s)' % (r.bad or 'ok'))
-    check('VERDICT READY (stock)' in t and t.count('SAME as the 4.04 file') == 4, 'dump: identity SAME x4, verdict READY (stock)')
+    check('VERDICT READY (stock)' in t and t.count('SAME as the 4.04 file') == 3 and t.count('  matches 4.04') == 16,
+          'dump: LIRO header + 2 code ranges SAME, 16 image pages reported, verdict READY (stock)')
     check(not cam.writes and diff(cam.mem) == [], 'dump: memory untouched, no pwrite')
     check('0123456789abcdef' not in t and 'not copied by m3og' in t, 'dump: the cpuinfo Serial line is not copied')
     check('12:34:56:ab:cd:ef' not in t and 'xx:xx:xx:xx:xx:xx' in t and 'liro: resume (WBI)' in t, 'dump: kernel log copied as text, MAC address blanked')
     check('== dir /sys/module/liro/parameters' in t and '= 0x035c6000' in t, 'dump: liro parameters listed with values')
     check(t.count('== mem ') == 11 + 3 and t.rstrip().split('\n')[-1].startswith('== done'), 'dump: 14 memory ranges and the done line')
-    check(list(cam.created) == ['/ramdsk/m3og_result.txt'], 'dump: result on /ramdsk')
+    check(list(cam.created) == ['/tmp_network/m3og_result.txt'], 'dump: result on /tmp_network (RAM)')
+    # 1b. the first camera run: the first image pages hold live data (three runs, three hashes). v2 reports them and goes on
+    cam = Camera()
+    for o in (0x200, 0x1004):
+        cam.mem[AV_PHYS - KLOG_PHYS + o] ^= 0x5A
+    r, t = run('dump', cam)
+    check('VERDICT READY (stock)' in t and t.count('differs from 4.04 (live data, not required)') == 2 and t.count('== mem image_page') == 2,
+          'live data in image pages 0 and 1: dump READY (stock), both pages reported and copied out')
+    r, t = run('test2', cam_from(bytes(cam.mem)))
+    check('DONE: ' in t and 'READY (test 2 applied)' in t, 'live data in image pages 0 and 1: test2 DONE (the v1 refusal is gone)')
     # 2. test 1 on stock
     cam = Camera()
     r, t = run('test1', cam)
@@ -313,7 +323,11 @@ def main():
     cam = Camera()
     cam.mem[0x637B4000 - 0x60000000 - KLOG_PHYS] ^= 0xFF
     r, t = run('test2', cam)
-    check(not r.bad and 'DIFFERS from the 4.04 file' in t and 'NOT DONE: av-cam identity' in t and not cam.writes, 'identity differs: NOT DONE, no write')
+    check(not r.bad and 'DIFFERS from the 4.04 file' in t and 'NOT DONE: av-cam identity' in t and not cam.writes, 'required code range differs: NOT DONE, no write')
+    cam = Camera()
+    cam.mem[0x637B4000 - 0x60000000 - KLOG_PHYS] ^= 0xFF
+    r, t = run('dump', cam)
+    check('VERDICT NOT READY' in t and t.count('== mem ') == 14 and '== blocks' in t, 'required code range differs: the dump still reads the blocks and tables')
     cam = Camera()
     cam.mem[AV_PHYS + 4 - KLOG_PHYS] ^= 1
     r, t = run('dump', cam)
@@ -331,13 +345,13 @@ def main():
     check(not r.bad and 'putting back' in t and 'everything written was put back' in t and bytes(cam.mem) == bytes(stock), 'write failure: rolled back, memory equals 4.04')
     # 9. earlier result present -> does nothing at all
     cam = Camera()
-    cam.files['/ramdsk/m3og_result.txt'] = b'old'
+    cam.files['/tmp_network/m3og_result.txt'] = b'old'
     r, t = run('test1', cam)
     check(not r.bad and not cam.created and not cam.writes and not any(n == 180 for n, _ in r.calls), 'result already there: nothing read, nothing written')
-    # 10. no /ramdsk -> result in /tmp/jiritsu; no /dev/mem -> NOT READY
-    cam = Camera(ramdsk=False)
+    # 10. no /tmp_network -> result in /tmp/jiritsu; no /dev/mem -> NOT READY
+    cam = Camera(tmpfs=False)
     r, t = run('dump', cam)
-    check(list(cam.created) == ['/tmp/jiritsu/m3og_result.txt'] and 'READY (stock)' in t, 'no /ramdsk: result in /tmp/jiritsu')
+    check(list(cam.created) == ['/tmp/jiritsu/m3og_result.txt'] and 'READY (stock)' in t, 'no /tmp_network: result in /tmp/jiritsu')
     cam = Camera(devmem=False)
     r, t = run('test1', cam)
     check('no /dev/mem' in t and not cam.writes, 'no /dev/mem: NOT READY, nothing written')

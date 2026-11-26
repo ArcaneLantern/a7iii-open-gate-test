@@ -1,4 +1,6 @@
-# A7 III kit 2: first open-gate test
+# A7 III kit 2 v2: first open-gate test
+
+**If you ran kit 2 before:** thank you, that run did its job. It showed the kit finds the camera's program in the right place. It also showed one check was too strict: part of the program's memory changes while the camera runs, so v1 refused to write anything. v2 fixes that check. Download the repo again and do the whole page below from the start. The dump should now end with `VERDICT READY (stock)`.
 
 Allow about 40 minutes. You need the A7 III on firmware 4.04, a charged battery, a memory card with free space, and its USB data cable. The setup from kit 1 (Python, and on Windows the Zadig driver) still applies.
 
@@ -26,7 +28,7 @@ Windows launchers are `windows/<name>.cmd`. On macOS, type `bash ` (with a trail
 ## Test 1
 
 1. **Battery out for ten seconds**, then back in, and turn the camera on. Put the mode dial on a stills mode (P, A, S, M or Auto). Connect USB.
-2. Run **dump**. It should end with `VERDICT READY (stock)`. If it says anything else, stop here and send the folder.
+2. Run **dump**. It should end with `VERDICT READY (stock)`. A line saying some image pages hold live data is normal. If the verdict says anything else, stop here and send the folder.
 3. Run **test 1**. Type `YES`. It should show `Outcome: DONE` and `VERDICT READY (test 1 applied)`.
 4. Unplug USB. Turn the dial to **movie**. Point the camera at something with clear top and bottom edges. Compared with a normal 4K picture, the view should be shifted up or down by about a tenth of the frame. Record about **10 seconds**.
 5. Write down what you saw: normal, shifted, frozen, garbled, black, or the camera restarted by itself.

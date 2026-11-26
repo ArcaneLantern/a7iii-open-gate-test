@@ -17,15 +17,18 @@
  * Memory: av-cam.bin runs from RAM at physical = link address - 0x60000000 (kernel command line: klog at 0x035A5000,
  * size 0x20000; av-cam's LIRO image follows at 0x035C6000; the reservation 0x02E68000 + 0x1A5E000 ends where av-cam's
  * data ends). It is read and written with pread/pwrite on /dev/mem, the method the original A7S kits used on the
- * same platform family (A7s Claude a7s_poke). Before anything else the LIRO header and three code ranges must equal the
- * 4.04 file; otherwise nothing is written and the dump reads nothing more of av-cam.
+ * same platform family (A7s Claude a7s_poke). Confirmed on a camera by the first kit-2 run (M3-F038): the LIRO header
+ * is at 0x035C6000 and liro's own parameter adr is 0x635C6000. Before anything else the LIRO header and two code ranges
+ * must equal the 4.04 file, or nothing is written. If only the header matches, the dump still reads the tables.
+ * v2: the first 64 KB of the image change while the camera runs. They are reported page by page and no longer required
+ * (v1 required them and refused on every camera).
  *
  * A write level writes only bytes of its three blocks (the register list, two front-end records), only where the
  * 4.04 file and the target differ, only if every byte of every block holds the 4.04 byte or the target byte. Each run
  * of bytes is read back; on any mismatch every byte written is put back. A battery pull undoes everything: av-cam is
  * loaded again from the warm-boot image. (The power switch alone does not reset RAM on this platform family.)
  *
- * It writes ONE file: /ramdsk/m3og_result.txt (libJiritsu's own RAM disk), or if that cannot be created,
+ * It writes ONE file: /tmp_network/m3og_result.txt (a RAM tmpfs in service mode), or if that cannot be created,
  * /tmp/jiritsu/m3og_result.txt. If either already exists it does nothing at all. No other file is written, no ioctl,
  * no mmap, no process, no library call (the library has no imports).
  */
@@ -47,7 +50,7 @@ struct block { const char *name; u32 va; u32 len; const u8 *stock; const u8 *t1;
 struct range { const char *name; u32 va; u32 len; };
 #include "m3og_design.h"
 
-#define VERSION "m3og_v1"
+#define VERSION "m3og_v2"
 #define KLOG_PHYS 0x035A5000u
 #define KLOG_LEN 0x20000u
 #define FILE_CAP (64 * 1024)
@@ -306,10 +309,36 @@ static int mem_wr(u32 phys, const u8 *b, u32 n) { return sys_pwrite(mem_fd, b, n
 
 static u8 page[4096];
 
-static int identity(void)
+/* v2: the first 64 KB of the image hold data that changes while the camera runs (first kit-2 run, M3-F038): they are
+ * hashed page by page and reported, never required. Up to four pages that differ are remembered for the dump. */
+static u32 live_pages[4];
+static int n_live;
+
+static void image_pages(void)
+{
+    for (u32 k = 0; k < N_PAGES; k++) {
+        struct sha s;
+        u8 d[32];
+        u32 va = PAGES_VA + 0x1000 * k;
+        ps("page va "); px(va);
+        if (!mem_rd(va - PHYS_DELTA, page, sizeof page)) { ps("  read failed (not required)\n"); continue; }
+        sha_init(&s); sha_add(&s, page, sizeof page); sha_end(&s, d);
+        ps(" sha256 "); pbytes(d, 32);
+        if (same(d, PAGE_SHA[k], 32)) ps("  matches 4.04\n");
+        else {
+            ps("  differs from 4.04 (live data, not required)\n");
+            if (n_live < 4) live_pages[n_live++] = va;
+        }
+    }
+}
+
+/* *loc: the LIRO header is where the kit expects it (av-cam's location is confirmed). Return: the location and every
+ * required code range match the 4.04 file (writes are allowed only then). */
+static int identity(int *loc)
 {
     int ok = 1;
     u8 hdr[16];
+    *loc = 0;
     ps("== identity\n");
     if (!mem_rd(AVCAM_PHYS, hdr, 16)) {
         ps("!! /dev/mem read at "); px(AVCAM_PHYS); ps(" failed\n");
@@ -318,6 +347,7 @@ static int identity(void)
     ps("lirohdr phys "); px(AVCAM_PHYS); ps(" bytes "); pbytes(hdr, 16);
     if (same(hdr, LIROHDR, 16)) ps("  SAME as the 4.04 file\n"); else { ps("  DIFFERS from the 4.04 file\n"); ok = 0; }
     if (!ok) return 0;
+    *loc = 1;
     for (int i = 0; i < N_IDENT; i++) {
         struct sha s;
         u8 d[32];
@@ -334,6 +364,7 @@ static int identity(void)
         ps(" sha256 "); pbytes(d, 32);
         if (same(d, IDENT[i].sha, 32)) ps("  SAME as the 4.04 file\n"); else { ps("  DIFFERS from the 4.04 file\n"); ok = 0; }
     }
+    image_pages();
     return ok;
 }
 
@@ -529,7 +560,8 @@ static const char *const LEVEL_NAME =
 
 __attribute__((constructor, used)) static void m3og_main(void)
 {
-    static const char *const paths[2] = {"/ramdsk/m3og_result.txt", "/tmp/jiritsu/m3og_result.txt"};
+    /* v2: /tmp_network is a RAM tmpfs (1 MB) in service mode; /ramdsk does not exist there (first kit-2 run) */
+    static const char *const paths[2] = {"/tmp_network/m3og_result.txt", "/tmp/jiritsu/m3og_result.txt"};
     for (int i = 0; i < 2 && out_fd < 0; i++) {
         int fd = sys_open(paths[i], O_WRONLY | O_CREAT | O_EXCL, 0644);
         if (fd == -EEXIST) return;                      /* an earlier result is still there: do nothing at all */
@@ -554,7 +586,7 @@ __attribute__((constructor, used)) static void m3og_main(void)
     dump_file("/proc/self/maps");
     dump_dir("/sys/module/liro/parameters", 1);
     dump_dir("/sys/module/dmm/parameters", 1);
-    dump_dir("/ramdsk", 0);
+    dump_dir("/tmp_network", 0);
     dump_dir("/tmp/jiritsu", 0);
 #endif
 
@@ -564,8 +596,11 @@ __attribute__((constructor, used)) static void m3og_main(void)
         ps("VERDICT NOT READY (no /dev/mem)\n");
     } else {
         int st[N_BLOCKS];
-        int idok = identity();
-        if (idok) read_blocks(st);
+        int loc = 0;
+        int idok = identity(&loc);
+        /* v2: the blocks are read (and the dump copies its ranges) once the location is confirmed, so a code-range
+         * mismatch still shows what the tables hold; writes still need the full identity */
+        if (loc) read_blocks(st);
         else for (int i = 0; i < N_BLOCKS; i++) st[i] = ST_UNREAD;
         verdict(idok, st);
 #if WRITES
@@ -576,9 +611,10 @@ __attribute__((constructor, used)) static void m3og_main(void)
             verdict(idok, st);
         }
 #else
-        if (idok) {
+        if (loc) {
             for (int i = 0; i < N_DUMP; i++) dump_range(DUMP[i].name, DUMP[i].va, DUMP[i].len);
             for (int i = 0; i < N_BLOCKS; i++) dump_range(BLOCKS[i].name, BLOCKS[i].va, BLOCKS[i].len);
+            for (int i = 0; i < n_live; i++) dump_range("image_page", live_pages[i], 0x1000);
         }
         dump_klog();
 #endif

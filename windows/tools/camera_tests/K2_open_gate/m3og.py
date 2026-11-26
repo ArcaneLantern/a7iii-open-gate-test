@@ -1,4 +1,10 @@
-"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v1): the first open-gate test, and a debug dump.
+"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v2): the first open-gate test, and a debug dump.
+
+v2 (2026-11-26), after the first run on a tester's camera: v1 refused every write because it required the first 64 KB
+of av-cam in memory to equal the file, and they hold data that changes while the camera runs (three runs, three
+hashes). The same runs confirmed av-cam's location: the LIRO header and both deeper code ranges were identical to 4.04.
+v2 requires the header and those two ranges, reports the first 64 KB page by page, and writes its result to the RAM
+tmpfs /tmp_network (/ramdsk does not exist in service mode). a7m3_map FINDINGS M3-F038.
 
 Four steps, each one service session that loads one small helper library on the camera (helper/m3og.c, design og_m3_v1
 of a7m3_map; modding/OG_M3_V1.md there):
@@ -16,7 +22,7 @@ of a7m3_map; modding/OG_M3_V1.md there):
 
 Nothing is written to flash except Sony's own service step: the library itself is written to the service work
 partition (/tmp/jiritsu/libJit.so, which is how the camera loads it) and deleted again in the same session. The helper
-writes its result to the RAM disk (/ramdsk), from where it is read back and deleted.
+writes its result to the RAM tmpfs /tmp_network (else /tmp/jiritsu), from where it is read back and deleted.
 
 What one session sends, in order (camera in USB Mass Storage mode):
   1. service-mode switch and login with PMCA-RE's public keys (as kit 1);
@@ -58,7 +64,7 @@ sys.path.insert(0, str(HERE.parent / "CT1_usb_first_contact"))
 import ct1_common as c                 # noqa: E402  guards, session log, pinned PMCA-RE
 import ct1_stage2_service as s2        # noqa: E402  connect(), libusb_devices()
 
-KIT = "m3kit2_v1"
+KIT = "m3kit2_v2"
 TEST = "M3K2"
 EXPECTED_MODEL = "ILCE-7M3"
 EXPECTED_FIRMWARE = "4.04"
@@ -68,13 +74,13 @@ KNOWN = json.loads((HERE.parent / "K1_readonly" / "expected_404.json").read_text
 
 # step -> (library, SHA-256, writes?, what it does)
 STEPS = {
-    "dump": ("libJit_m3og_dump.so", "cde6c95a9bcc2df56dbd3c30b486332c006f2b7ea371de227662743b24210c16", False,
+    "dump": ("libJit_m3og_dump.so", "aadfef5605bbc4454bdd6f46e6d4fb57baa7d90ed79503665df40dece4407923", False,
              "read-only dump: facts, kernel log, where av-cam is, what the design's bytes hold, sensor and front-end tables"),
-    "test1": ("libJit_m3og_test1.so", "2cdb3b6c8cfaba064bcad5364473b6a38eb5ad106bd6985bdffe520c67eac739", True,
+    "test1": ("libJit_m3og_test1.so", "1b0dd0e9fae216f86f38c2a0c2e646dd4e82dcfa1d14994961a60589e03d7c30", True,
               "TEST 1: the 4K 24p/25p full-frame sensor mode reads the whole sensor height (7 bytes)"),
-    "test2": ("libJit_m3og_test2.so", "62637acfdcb63ea4ccdcf8fb0d08fc711fe3b518262648847bc32401dbfb5e92", True,
+    "test2": ("libJit_m3og_test2.so", "4f5e9fcc57d41544f088f4d0c98cd2814d33464100b52101655d959fc0704a23", True,
               "TEST 2: test 1 plus the front end: the whole 3:2 height squeezed into the stock 4K file"),
-    "putback": ("libJit_m3og_putback.so", "e00bb142c9b9fda980016bd78e8f457cff49d6fd2c2abadf412022d3fc6bd77e", True,
+    "putback": ("libJit_m3og_putback.so", "7ba59b792b915ec838c2f767641dfc9e34a1c7e79db66244e8c39f9b5bb6daf2", True,
                 "PUT BACK: the 4.04 bytes again wherever test 1 or test 2 changed them"),
 }
 PINNED = {sha for _n, sha, _w, _t in STEPS.values()}
@@ -84,7 +90,7 @@ SET_FILE_PATH, SET_FILE2, GET_FILE2, FILE_DELETE2, MOUNT = 0x400F, 0x4010, 0x401
 MOUNT_WORK_AREA, UNMOUNT_WORK_AREA = b"\x00\x00", b"\x00\x01"
 KNOWN_PATH = b"../../usr/share/pmbp/DeviceInfo.xml"
 LIB_PATH = b"/tmp/jiritsu/libJit.so"             # must be exactly this string: adj_cmd_set_file2 compares it, then dlopen
-RESULT_PATHS = (b"../../ramdsk/m3og_result.txt", b"m3og_result.txt")   # /ramdsk (RAM), else /tmp/jiritsu (the work partition)
+RESULT_PATHS = (b"../../tmp_network/m3og_result.txt", b"m3og_result.txt")   # /tmp_network (RAM tmpfs), else /tmp/jiritsu (the work partition)
 BUSY_PATH = b"../../tmp/jbusy"
 PATHS = (KNOWN_PATH, LIB_PATH, BUSY_PATH) + RESULT_PATHS
 
@@ -337,6 +343,7 @@ def parse_result(data, step):
              "header_ok": bool(lines) and lines[0].startswith("m3og ") and ("level %s for ILCE-7M3 4.04" % step) in lines[0],
              "complete": any(ln.startswith("== done") for ln in lines[-3:]),
              "identity_same": sum(1 for ln in lines if ln.endswith("SAME as the 4.04 file")),
+             "image_pages_live": [ln.split()[2] for ln in lines if ln.startswith("page va ") and "differs from 4.04" in ln],
              "identity_differs": sum(1 for ln in lines if ln.endswith("DIFFERS from the 4.04 file")),
              "verdicts": verdicts, "outcome": outcome,
              "outcome_line": pick("DONE: ") or pick("NOTHING TO DO") or pick("NOT DONE: ") or pick("!! UNDO INCOMPLETE"),
@@ -364,6 +371,9 @@ def say_result(session, f):
     session.say("Helper result: header %s, %s, identity %d same / %d differ"
                 % ("ok" if f["header_ok"] else "NOT as expected", "complete" if f["complete"] else "INCOMPLETE",
                    f["identity_same"], f["identity_differs"]))
+    if f["image_pages_live"]:
+        session.say("  %d of the first 16 image pages hold live data (reported only, not required): %s"
+                    % (len(f["image_pages_live"]), " ".join(f["image_pages_live"])))
     for v in f["verdicts"]:
         session.say("  VERDICT " + v)
     if f["outcome"]:
@@ -378,9 +388,11 @@ def canned_result(step, state):
     """What the helper would report on a model camera when it cannot be emulated here (the kit ships no firmware).
     state: the design's state before the step ('stock', 'test1', 'test2'). Returns (text, new state)."""
     name = {"stock": "READY (stock)", "test1": "READY (test 1 applied)", "test2": "READY (test 2 applied)"}
-    lines = ["m3og m3og_v1 level %s for ILCE-7M3 4.04" % step, "euid 0x00000000 pid 0x00000001",
+    lines = ["m3og m3og_v2 level %s for ILCE-7M3 4.04" % step, "euid 0x00000000 pid 0x00000001",
              "== file /proc/cmdline", "(simulated camera)", "== end 0x00000012 bytes", "== identity"]
-    lines += ["range r%d  SAME as the 4.04 file" % k for k in range(4)]
+    lines += ["lirohdr  SAME as the 4.04 file"] + ["range r%d  SAME as the 4.04 file" % k for k in range(2)]
+    lines += ["page va 0x635c6000 sha256 00  differs from 4.04 (live data, not required)"]
+    lines += ["page va 0x%08x sha256 00  matches 4.04" % (0x635c6000 + 0x1000 * k) for k in range(1, 16)]
     lines += ["VERDICT " + name[state]]
     new = state
     if STEPS[step][2]:
@@ -478,7 +490,7 @@ def make_sim(files=None, mount_ok=True, load_status=ST_OK, write_raises=False, e
                     else:
                         res, self.state = canned_result(step, self.state)
                     if res is not None:
-                        self.fs["/ramdsk/m3og_result.txt"] = res
+                        self.fs["/tmp_network/m3og_result.txt"] = res
                 return 0, struct.pack("<I", 0)
             raise AssertionError(name)
 
@@ -623,7 +635,7 @@ def selftest():
               names.count("SET_FILE2") == 1 and sim.loads == 1 and "/tmp/jiritsu/libJit.so" not in sim.fs
               and [p for n, p in sent(s) if n == "SET_FILE2"][0][3:] == library(step))
         check("%s: result read and deleted; unmount last; stop sent" % step,
-              k2.get("result_found") == RESULT_PATHS[0].decode() and "/ramdsk/m3og_result.txt" not in sim.fs and ends_cleanly(s, sim))
+              k2.get("result_found") == RESULT_PATHS[0].decode() and "/tmp_network/m3og_result.txt" not in sim.fs and ends_cleanly(s, sim))
         want = {"dump": None, "test1": "DONE", "test2": "DONE", "putback": "NOTHING TO DO"}[step]
         check("%s: result header ok, complete, verdict READY (stock)%s" % (step, "" if want is None else ", outcome " + want),
               f.get("header_ok") and f.get("complete") and f.get("verdicts", [""])[0] == "READY (stock)" and f.get("outcome") == want, str(f.get("verdicts")))
@@ -654,7 +666,7 @@ def selftest():
     check("a foreign libJit.so: stop, left alone, nothing written",
           "NOT one of this kit's" in s.results.get("stopped", "") and "SET_FILE2" not in [n for n, _ in sent(s)]
           and sim.fs.get("/tmp/jiritsu/libJit.so") == b"\x7fELF someone else's" and ends_cleanly(s, sim))
-    s, _m, sim = simulate("dump", make_sim(files={**files, "/ramdsk/m3og_result.txt": b"old result"}))
+    s, _m, sim = simulate("dump", make_sim(files={**files, "/tmp_network/m3og_result.txt": b"old result"}))
     check("an earlier result: saved as old_result_0.txt and deleted, then the run goes on",
           "stopped" not in s.results and "old_result_0.txt" in s.files and s.results["k2"].get("result_found"))
     s, _m, sim = simulate("test2", make_sim(files={**files, "/tmp/jbusy": b""}))
