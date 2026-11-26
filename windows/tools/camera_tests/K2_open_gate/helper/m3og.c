@@ -1,18 +1,23 @@
 /*
- * m3og: the helper library of the A7 III (ILCE-7M3, firmware 4.04) open-gate test kit 2 (a7m3_map, design og_m3_v1).
+ * m3og: the helper library of the A7 III (ILCE-7M3, firmware 4.04) open-gate test kit 2 (a7m3_map, design og_m3_v2).
  *
  * How it runs: the kit writes this file to /tmp/jiritsu/libJit.so with the service file-write command; libJiritsu.so's
  * adj_cmd_set_file2 then loads it with dlopen (a7m3_map M3-F011), which runs the constructor below once inside the
  * service process; the firmware calls dlclose and the kit deletes the file again. The kit sends Jiritsu MOUNT first
- * (M3-F030). Built four times, one level each (build_m3og.sh):
+ * (M3-F030). Built six times, one level each (build_m3og.sh):
  *
  *   level 1   DUMP, read-only. /proc and /sys facts, the kernel log, where av-cam sits in memory (checked against the 4.04
- *             file), what each block of the design holds now, and copies of the sensor and front-end tables.
+ *             file), what each block of the design holds now, copies of the sensor and front-end tables, and (v3)
+ *             the camera's application log and the state of its output-sync refresh loop.
  *   level 11  TEST 1. Writes the seven sensor bytes of og_m3_v1 into the IMX410 register list (column 14 = drives 0x1f
  *             and 0x89, 4K 24p/25p full frame): the sensor reads 4036 rows from row 61 instead of 3412 from row 373.
- *   level 21  TEST 2. Test 1 plus both front-end records of those drives (heights +624, vertical step 6888): the whole
- *             sensor height, squeezed into the stock 4K frame.
- *   level 31  PUT BACK. Writes the 4.04 bytes back wherever test 1 or test 2 changed them.
+ *   level 21  TEST 2. Test 1 plus both front-end records of those drives (heights +624, vertical step 6888) and, new
+ *             in v3, the camera-core timing pair of the drive (line count 2030 for the 4050-line head, cycle 726 /
+ *             696): the whole sensor height, squeezed into the stock 4K frame. v2's test 2 left the timing pair at
+ *             the stock 3436 lines; the camera lost its output sync and restarted itself (M3-F039..F041).
+ *   level 22  TEST 3. The same three parts for half the extra height (3724 rows from row 217, heights +312).
+ *   level 23  TEST 4. The same for a quarter (3568 rows from row 295, heights +156): the smallest change of line rate.
+ *   level 31  PUT BACK. Writes the 4.04 bytes back wherever a test changed them.
  *
  * Memory: av-cam.bin runs from RAM at physical = link address - 0x60000000 (kernel command line: klog at 0x035A5000,
  * size 0x20000; av-cam's LIRO image follows at 0x035C6000; the reservation 0x02E68000 + 0x1A5E000 ends where av-cam's
@@ -23,10 +28,12 @@
  * v2: the first 64 KB of the image change while the camera runs. They are reported page by page and no longer required
  * (v1 required them and refused on every camera).
  *
- * A write level writes only bytes of its three blocks (the register list, two front-end records), only where the
- * 4.04 file and the target differ, only if every byte of every block holds the 4.04 byte or the target byte. Each run
- * of bytes is read back; on any mismatch every byte written is put back. A battery pull undoes everything: av-cam is
- * loaded again from the warm-boot image. (The power switch alone does not reset RAM on this platform family.)
+ * A write level writes only bytes of its six blocks (the register list, two front-end records, and three small
+ * timing blocks in the slot of the camera's TV system: ROM pair, runtime pair, one derived byte), only where the
+ * 4.04 values and the target differ, only if every byte of every block holds the 4.04 byte or the target byte. Each
+ * run of bytes is read back; on any mismatch every byte written is put back. A restart undoes everything: av-cam is
+ * loaded again from the warm-boot image (seen after the forced restart of the second run, and after a battery pull).
+ * The power switch alone does not reset RAM on this platform family.
  *
  * It writes ONE file: /tmp_network/m3og_result.txt (a RAM tmpfs in service mode), or if that cannot be created,
  * /tmp/jiritsu/m3og_result.txt. If either already exists it does nothing at all. No other file is written, no ioctl,
@@ -40,19 +47,23 @@ typedef unsigned long long u64;
 #ifndef LEVEL
 #define LEVEL 1
 #endif
-#if LEVEL != 1 && LEVEL != 11 && LEVEL != 21 && LEVEL != 31
-#error "LEVEL must be 1, 11, 21 or 31"
+#if LEVEL != 1 && LEVEL != 11 && LEVEL != 21 && LEVEL != 22 && LEVEL != 23 && LEVEL != 31
+#error "LEVEL must be 1, 11, 21, 22, 23 or 31"
 #endif
 #define WRITES (LEVEL != 1)
 
 struct ident { const char *name; u32 va; u32 len; u8 sha[32]; };
-struct block { const char *name; u32 va; u32 len; const u8 *stock; const u8 *t1; const u8 *t2; };
+/* patch[n]: the bytes of test n+1 that differ from stock, npatch[n] triplets {offset low, offset high, value} */
+struct block { const char *name; u32 va; u32 len; const u8 *stock; const u8 *patch[4]; u16 npatch[4]; };
 struct range { const char *name; u32 va; u32 len; };
 #include "m3og_design.h"
 
-#define VERSION "m3og_v2"
+#define VERSION "m3og_v3"
 #define KLOG_PHYS 0x035A5000u
 #define KLOG_LEN 0x20000u
+#define ALOG_PHYS 0x03524FC0u            /* kernel command line: alog.addr=0x03524FC0 alog.size=0x60040 */
+#define ALOG_LEN 0x60040u
+#define RESULT_CAP (900u * 1024u)        /* /tmp_network is a 1024 KB tmpfs: the log copies stop here */
 #define FILE_CAP (64 * 1024)
 #define MAXB 5496
 
@@ -368,34 +379,86 @@ static int identity(int *loc)
     return ok;
 }
 
+/* v3: six blocks. Three are the same in every camera (register list, two front-end records); three hold the
+ * camera-core timing pair of the 4K full-frame drive and sit in the slot of the camera's TV system (59.94: slot 28,
+ * 50: slot 27). Until the system is known only the first three are read and nothing can be written. */
+#define N_BLOCKS (N_COMMON + N_SYSBLK)
+static const struct block *B[N_BLOCKS];
+static int n_blk;
+static int tv_sys = -1;
 static u8 cur[N_BLOCKS][MAXB];
-static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "MIXED", "OTHER", "NOT READ"};
-enum { ST_STOCK, ST_T1, ST_T2, ST_MIXED, ST_OTHER, ST_UNREAD };
+static u8 tgt[N_STEPS][N_BLOCKS][MAXB];  /* the full bytes of each test, built from stock + patch when a block is taken */
+static u8 eq[N_BLOCKS];                 /* bit 0: every byte is the stock byte; bit n: every byte is test n's byte */
+enum { ST_STOCK, ST_T1, ST_T2, ST_T3, ST_T4, ST_MIXED, ST_OTHER, ST_UNREAD };
+static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "TEST3", "TEST4", "MIXED", "OTHER", "NOT READ"};
 
-/* state of one block from its current bytes: every byte must be the stock byte or the test-2 byte to be anything
- * but OTHER (the test-1 bytes are a subset: block 0 is the same for both tests, blocks 1/2 are stock for test 1) */
+static void take_block(int i, const struct block *b)
+{
+    B[i] = b;
+    for (int n = 0; n < N_STEPS; n++) {
+        memcpy(tgt[n][i], b->stock, b->len);
+        for (u32 k = 0; k < b->npatch[n]; k++) {
+            const u8 *p = b->patch[n] + 3 * k;
+            tgt[n][i][p[0] | (u32)p[1] << 8] = p[2];
+        }
+    }
+}
+
+/* The runtime drive table has a real row (HMAX 525) in the slot of the active TV system and a placeholder (1) in the
+ * other one. */
+static void pick_system(void)
+{
+    u8 a[4], b[4];
+    for (int i = 0; i < N_COMMON; i++) take_block(i, &BLK_COMMON[i]);
+    n_blk = N_COMMON;
+    ps("== tv system\n");
+    if (!mem_rd(T14_VA + 28 * T14_STRIDE + T14_HMAX_OFF - PHYS_DELTA, a, 4) ||
+        !mem_rd(T14_VA + 27 * T14_STRIDE + T14_HMAX_OFF - PHYS_DELTA, b, 4)) { ps("tv system  READ FAILED\n"); return; }
+    u32 h28 = a[0] | a[1] << 8 | a[2] << 16 | (u32)a[3] << 24, h27 = b[0] | b[1] << 8 | b[2] << 16 | (u32)b[3] << 24;
+    ps("slot 28 hmax "); px(h28); ps(" slot 27 hmax "); px(h27);
+    if (h28 == HMAX_4K && h27 == 1) tv_sys = 0;
+    else if (h27 == HMAX_4K && h28 == 1) tv_sys = 1;
+    if (tv_sys < 0) { ps("  tv system NOT RECOGNISED\n"); return; }
+    ps(tv_sys == 0 ? "  tv system 59.94 (slot 28)\n" : "  tv system 50 (slot 27)\n");
+    for (int i = 0; i < N_SYSBLK; i++) take_block(N_COMMON + i, &BLK_SYS[tv_sys][i]);
+    n_blk = N_BLOCKS;
+}
+
+/* state of one block from its current bytes */
 static int block_state(int i)
 {
-    const struct block *b = &BLOCKS[i];
-    u32 ds = 0, d1 = 0, d2 = 0, other = 0;
+    const struct block *b = B[i];
+    u32 ds = 0, d[N_STEPS], other = 0;
+    for (int n = 0; n < N_STEPS; n++) d[n] = 0;
     for (u32 k = 0; k < b->len; k++) {
         u8 c = cur[i][k];
-        if (c != b->stock[k]) ds++;
-        if (c != b->t1[k]) d1++;
-        if (c != b->t2[k]) d2++;
-        if (c != b->stock[k] && c != b->t2[k]) other++;
+        int known = c == b->stock[k];
+        if (!known) ds++;
+        for (int n = 0; n < N_STEPS; n++) {
+            if (c != tgt[n][i][k]) d[n]++; else known = 1;
+        }
+        if (!known) other++;
     }
-    int st = ds == 0 ? ST_STOCK : (d1 == 0 && b->t1 != b->stock) ? ST_T1 : d2 == 0 ? ST_T2 : other ? ST_OTHER : ST_MIXED;
+    int st = ST_MIXED;
+    eq[i] = ds == 0;
+    for (int n = N_STEPS - 1; n >= 0; n--) if (d[n] == 0) { eq[i] |= (u8)(2u << n); st = ST_T1 + n; }
+    if (ds == 0) st = ST_STOCK;
+    else if (st == ST_MIXED && other) st = ST_OTHER;
     ps("block "); ps(b->name); ps(" va "); px(b->va); ps(" len "); phex(b->len, 4);
-    ps(" differs from stock "); phex(ds, 4); ps(" from test1 "); phex(d1, 4); ps(" from test2 "); phex(d2, 4);
+    ps(" differs from stock "); phex(ds, 4);
+    for (int n = 0; n < N_STEPS; n++) { ps(" from test"); phex((u32)n + 1, 1); ps(" "); phex(d[n], 4); }
     ps("  "); ps(STATE_NAME[st]); nl();
     if (other) {
         u32 shown = 0;
-        for (u32 k = 0; k < b->len && shown < 16; k++)
-            if (cur[i][k] != b->stock[k] && cur[i][k] != b->t2[k]) {
-                ps("  other at "); px(b->va + k); ps(" now "); phex(cur[i][k], 2); ps(" stock "); phex(b->stock[k], 2); nl();
+        for (u32 k = 0; k < b->len && shown < 16; k++) {
+            u8 c = cur[i][k];
+            int known = c == b->stock[k];
+            for (int n = 0; n < N_STEPS; n++) known = known || c == tgt[n][i][k];
+            if (!known) {
+                ps("  other at "); px(b->va + k); ps(" now "); phex(c, 2); ps(" stock "); phex(b->stock[k], 2); nl();
                 shown++;
             }
+        }
     }
     return st;
 }
@@ -404,10 +467,11 @@ static int read_blocks(int st[N_BLOCKS])
 {
     int ok = 1;
     ps("== blocks\n");
-    for (int i = 0; i < N_BLOCKS; i++) {
-        if (!mem_rd(BLOCKS[i].va - PHYS_DELTA, cur[i], BLOCKS[i].len)) {
-            ps("block "); ps(BLOCKS[i].name); ps("  READ FAILED\n");
-            st[i] = ST_UNREAD; ok = 0; continue;
+    for (int i = 0; i < N_BLOCKS; i++) { st[i] = ST_UNREAD; eq[i] = 0; }
+    for (int i = 0; i < n_blk; i++) {
+        if (!mem_rd(B[i]->va - PHYS_DELTA, cur[i], B[i]->len)) {
+            ps("block "); ps(B[i]->name); ps("  READ FAILED\n");
+            ok = 0; continue;
         }
         st[i] = block_state(i);
     }
@@ -418,9 +482,14 @@ static void verdict(int idok, const int st[N_BLOCKS])
 {
     ps("VERDICT ");
     if (!idok) { ps("NOT READY (av-cam is not where or what the 4.04 file says)\n"); return; }
-    if (st[0] == ST_STOCK && st[1] == ST_STOCK && st[2] == ST_STOCK) ps("READY (stock)\n");
-    else if (st[0] == ST_T1 && st[1] == ST_STOCK && st[2] == ST_STOCK) ps("READY (test 1 applied)\n");
-    else if (st[0] == ST_T1 && st[1] == ST_T2 && st[2] == ST_T2) ps("READY (test 2 applied)\n");
+    if (n_blk != N_BLOCKS) { ps("NOT READY (the TV system slot of the 4K drive was not recognised)\n"); return; }
+    u32 all = 0x1f;
+    for (int i = 0; i < N_BLOCKS; i++) all &= st[i] == ST_UNREAD ? 0 : eq[i];
+    if (all & 1) ps("READY (stock)\n");
+    else if (all & 2) ps("READY (test 1 applied)\n");
+    else if (all & 4) ps("READY (test 2 applied)\n");
+    else if (all & 8) ps("READY (test 3 applied)\n");
+    else if (all & 16) ps("READY (test 4 applied)\n");
     else ps("NOT READY (the design's bytes are partly applied or changed by something else)\n");
 }
 
@@ -439,29 +508,36 @@ static void dump_range(const char *name, u32 va, u32 len)
 
 static int hexd(u8 c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
 
-/* The kernel log ring as text: printable bytes as they are, anything else as '.', MAC-address-like
- * patterns (hh:hh:hh:hh:hh:hh) blanked. */
-static void dump_klog(void)
+/* A log ring as text: printable bytes as they are, zero bytes dropped, anything else as '.' (a run of them as one
+ * '.' when squeeze is set), MAC-address-like patterns (hh:hh:hh:hh:hh:hh) blanked. Stops when the result file would
+ * pass RESULT_CAP, so the closing lines of the result always fit. */
+static void dump_log(const char *name, u32 phys, u32 len, int squeeze)
 {
-    ps("== klog phys "); px(KLOG_PHYS); ps(" len "); px(KLOG_LEN); nl();
+    ps("== "); ps(name); ps(" phys "); px(phys); ps(" len "); px(len); nl();
     u32 col = 0;
-    for (u32 o = 0; o < KLOG_LEN; o += sizeof page) {
-        if (!mem_rd(KLOG_PHYS + o, page, sizeof page)) { ps("\n!! read failed\n"); break; }
-        for (u32 k = 0; k + 17 <= sizeof page; k++) {
+    int dot = 0, cut = 0;
+    for (u32 o = 0; o < len && !cut; o += sizeof page) {
+        u32 n = len - o < sizeof page ? len - o : sizeof page;
+        if (!mem_rd(phys + o, page, n)) { ps("\n!! read failed\n"); break; }
+        for (u32 k = 0; k + 17 <= n; k++) {
             int mac = 1;
             for (u32 j = 0; j < 17 && mac; j++) mac = (j % 3 == 2) ? page[k + j] == ':' : hexd(page[k + j]);
             if (mac) for (u32 j = 0; j < 17; j++) if (j % 3 != 2) page[k + j] = 'x';
         }
-        for (u32 k = 0; k < sizeof page; k++) {
+        for (u32 k = 0; k < n; k++) {
             u8 c = page[k];
-            if (c == '\n') { nl(); col = 0; continue; }
-            char t = (c >= 0x20 && c < 0x7f) ? (char)c : '.';
+            if (c == '\n') { nl(); col = 0; dot = 0; continue; }
             if (c == 0) continue;
+            int printable = c >= 0x20 && c < 0x7f;
+            if (!printable && squeeze && dot) continue;
+            dot = !printable;
+            char t = printable ? (char)c : '.';
             put(&t, 1);
             if (++col >= 200) { nl(); col = 0; }
         }
+        if (out_total + olen > RESULT_CAP) cut = 1;
     }
-    ps("\n== end\n");
+    ps(cut ? "\n== cut (result size limit)\n" : "\n== end\n");
 }
 #endif
 
@@ -470,11 +546,15 @@ static void dump_klog(void)
 static const u8 *target(int i)
 {
 #if LEVEL == 11
-    return BLOCKS[i].t1;
+    return tgt[0][i];
 #elif LEVEL == 21
-    return BLOCKS[i].t2;
+    return tgt[1][i];
+#elif LEVEL == 22
+    return tgt[2][i];
+#elif LEVEL == 23
+    return tgt[3][i];
 #else
-    return BLOCKS[i].stock;
+    return B[i]->stock;
 #endif
 }
 
@@ -487,9 +567,9 @@ static void undo(void)
     int bad = 0;
     for (int r = n_done - 1; r >= 0; r--) {
         struct run *w = &done_runs[r];
-        u8 back[MAXB];
-        if (!mem_wr(BLOCKS[w->blk].va - PHYS_DELTA + w->off, cur[w->blk] + w->off, w->len) ||
-            !mem_rd(BLOCKS[w->blk].va - PHYS_DELTA + w->off, back, w->len) || !same(back, cur[w->blk] + w->off, w->len))
+        u8 back[64];
+        if (!mem_wr(B[w->blk]->va - PHYS_DELTA + w->off, cur[w->blk] + w->off, w->len) ||
+            !mem_rd(B[w->blk]->va - PHYS_DELTA + w->off, back, w->len) || !same(back, cur[w->blk] + w->off, w->len))
             bad = 1;
     }
     ps(bad ? "!! UNDO INCOMPLETE: battery out for ten seconds now\n" : "everything written was put back\n");
@@ -499,21 +579,21 @@ static void write_level(int idok, const int st[N_BLOCKS])
 {
     ps("== write level "); phex(LEVEL, 2); nl();
     if (!idok) { ps("NOT DONE: av-cam identity not confirmed; nothing is written\n"); return; }
-    /* every byte must already be the stock byte or this level's target byte (put back: or the test-2 byte) */
+    if (n_blk != N_BLOCKS) { ps("NOT DONE: the TV system slot of the 4K drive was not recognised; nothing is written\n"); return; }
+    /* every byte must already be the stock byte or this level's target byte (put back: or any test's byte) */
     for (int i = 0; i < N_BLOCKS; i++) {
         if (st[i] == ST_UNREAD) { ps("NOT DONE: a block could not be read; nothing is written\n"); return; }
         const u8 *t = target(i);
-        for (u32 k = 0; k < BLOCKS[i].len; k++) {
+        for (u32 k = 0; k < B[i]->len; k++) {
             u8 c = cur[i][k];
-            int fine = c == BLOCKS[i].stock[k] || c == t[k];
+            int fine = c == B[i]->stock[k] || c == t[k], test_byte = 0;
+            for (int n = 0; n < N_STEPS; n++) test_byte = test_byte || c == tgt[n][i][k];
 #if LEVEL == 31
-            fine = fine || c == BLOCKS[i].t2[k];
+            fine = fine || test_byte;
 #endif
             if (!fine) {
-                ps("NOT DONE: block "); ps(BLOCKS[i].name); ps(" byte at "); px(BLOCKS[i].va + k); ps(" holds "); phex(c, 2);
-#if LEVEL == 11
-                if (i > 0 && c == BLOCKS[i].t2[k]) ps(" (test 2 is applied: run the put-back first)");
-#endif
+                ps("NOT DONE: block "); ps(B[i]->name); ps(" byte at "); px(B[i]->va + k); ps(" holds "); phex(c, 2);
+                if (test_byte) ps(" (another test is applied: run the put-back first)");
                 ps("; nothing is written\n");
                 return;
             }
@@ -523,17 +603,17 @@ static void write_level(int idok, const int st[N_BLOCKS])
     for (int i = 0; i < N_BLOCKS; i++) {
         const u8 *t = target(i);
         u32 k = 0;
-        while (k < BLOCKS[i].len) {
+        while (k < B[i]->len) {
             if (cur[i][k] == t[k]) { k++; continue; }
             u32 s = k;
-            while (k < BLOCKS[i].len && cur[i][k] != t[k] && k - s < 64) k++;
+            while (k < B[i]->len && cur[i][k] != t[k] && k - s < 64) k++;
             u8 back[64];
             u32 n = k - s;
             if (n_done >= (int)(sizeof done_runs / sizeof done_runs[0])) { ps("NOT DONE: too many runs\n"); undo(); return; }
-            int okw = mem_wr(BLOCKS[i].va - PHYS_DELTA + s, t + s, n);
+            int okw = mem_wr(B[i]->va - PHYS_DELTA + s, t + s, n);
             done_runs[n_done].blk = i; done_runs[n_done].off = s; done_runs[n_done].len = n; n_done++;
-            if (!okw || !mem_rd(BLOCKS[i].va - PHYS_DELTA + s, back, n) || !same(back, t + s, n)) {
-                ps("NOT DONE: write or read-back at "); px(BLOCKS[i].va + s); ps(" failed; putting back\n");
+            if (!okw || !mem_rd(B[i]->va - PHYS_DELTA + s, back, n) || !same(back, t + s, n)) {
+                ps("NOT DONE: write or read-back at "); px(B[i]->va + s); ps(" failed; putting back\n");
                 undo();
                 return;
             }
@@ -554,6 +634,10 @@ static const char *const LEVEL_NAME =
     "test1";
 #elif LEVEL == 21
     "test2";
+#elif LEVEL == 22
+    "test3";
+#elif LEVEL == 23
+    "test4";
 #else
     "putback";
 #endif
@@ -600,12 +684,12 @@ __attribute__((constructor, used)) static void m3og_main(void)
         int idok = identity(&loc);
         /* v2: the blocks are read (and the dump copies its ranges) once the location is confirmed, so a code-range
          * mismatch still shows what the tables hold; writes still need the full identity */
-        if (loc) read_blocks(st);
+        if (loc) { pick_system(); read_blocks(st); }
         else for (int i = 0; i < N_BLOCKS; i++) st[i] = ST_UNREAD;
         verdict(idok, st);
 #if WRITES
         write_level(idok, st);
-        if (idok) {
+        if (idok && n_blk == N_BLOCKS) {
             ps("after:\n");
             read_blocks(st);
             verdict(idok, st);
@@ -613,10 +697,13 @@ __attribute__((constructor, used)) static void m3og_main(void)
 #else
         if (loc) {
             for (int i = 0; i < N_DUMP; i++) dump_range(DUMP[i].name, DUMP[i].va, DUMP[i].len);
-            for (int i = 0; i < N_BLOCKS; i++) dump_range(BLOCKS[i].name, BLOCKS[i].va, BLOCKS[i].len);
+            for (int i = 0; i < n_blk; i++) dump_range(B[i]->name, B[i]->va, B[i]->len);
             for (int i = 0; i < n_live; i++) dump_range("image_page", live_pages[i], 0x1000);
         }
-        dump_klog();
+        dump_log("klog", KLOG_PHYS, KLOG_LEN, 0);
+        /* v3: the application log ring (kernel command line alog.addr / alog.size). av-cam's own messages go there:
+         * after a forced restart it should hold which check gave up ("Lost CAMOUT_V ...", "RCV overflow ..."). */
+        dump_log("alog", ALOG_PHYS, ALOG_LEN, 1);
 #endif
         sys_close(mem_fd);
     }

@@ -1,8 +1,8 @@
 {
- "kit": "m3kit2_v2",
+ "kit": "m3kit2_v3",
  "camera": "ILCE-7M3, firmware 4.04",
- "written": "2026-11-26, before any kit-2 contact with an A7 III (kit 1 v2 had confirmed 4.04 and the MOUNT -> file route, M3-F032); v2 revisions of Q2/Q4 after the v1 run, before any v2 run",
- "basis": "a7m3_map FINDINGS.md M3-F030..F036, modding/OG_M3_V1.md (static analysis and emulation of the 4.04 update)",
+ "written": "2026-11-26, before any kit-2 contact with an A7 III (kit 1 v2 had confirmed 4.04 and the MOUNT -> file route, M3-F032); v2 revisions of Q2/Q4 after the v1 run, before any v2 run; v3 claims Q9-Q12 written 2026-11-26 after the v2 run and before any v3 run",
+ "basis": "a7m3_map FINDINGS.md M3-F030..F041, modding/OG_M3_V2.md (static analysis and emulation of the 4.04 update; two camera runs)",
  "predictions": [
   {
    "id": "Q1",
@@ -43,7 +43,28 @@
    "id": "Q8",
    "claim": "putback answers DONE and READY (stock); a battery pull also restores 4.04 (the warm-boot image reloads av-cam). The power switch alone may NOT reset RAM (A7S family: it is a suspend).",
    "source": "A7s Claude A7S-F15/F16, JOURNAL OG2 run"
+  },
+  {
+   "id": "Q9",
+   "claim": "The dump reports the TV system of the 4K full-frame drive from the runtime drive table (59.94: slot 28 on the first tester's camera) and six blocks STOCK; the runtime cycle pair reads 836 / 1718 and the derived byte 38. High: these bytes were in the v2 dumps.",
+   "source": "M3-F041; v2 dumps (rt_t14, rt_t10)"
+  },
+  {
+   "id": "Q10",
+   "claim": "test2 (v3: sensor + records + timing pair 726 / 2030) answers DONE and READY (test 2 applied). In 4K 24p full frame the picture is the whole 3:2 height squeezed 1.185. Low-medium: the pair is the one stock quantity that v2 left inconsistent, but the line rate is 15 % above any stock mode and other camera-core fields (size row, record words of variant 0x19) are untouched. A restart like v2's is possible and restores stock.",
+   "source": "M3-F040, M3-F041"
+  },
+  {
+   "id": "Q11",
+   "claim": "If test2 restarts the camera, test3 (+312 rows, pair 787 / 1874, line rate +6 %) or test4 (+156 rows, pair 821 / 1796, +2 %) gives a picture. If all three restart, the cycle pair is not the missing piece (or not the only one).",
+   "source": "M3-F041"
+  },
+  {
+   "id": "Q12",
+   "claim": "After a forced restart the application log ring (phys 0x03524FC0, 0x60040 bytes) read by the next dump still holds av-cam's lines from before the restart, among them \"S-Ele Refresh!\" and one of \"Lost CAMOUT_V ...\", \"RCV overflow VD Seq Refresh!\" or \"SDVGA_SRC overflow VD Seq Refresh!\". Medium-low: the ring lies inside a warm-boot memory range (wbimem 0x500000@0x03085000), so the restart may overwrite it; the kernel log ring outside that range did survive.",
+   "source": "M3-F040; kernel command line"
   }
  ],
- "v1_outcome": "first tester (macOS), 2026-11-26, dump/test1/test2 sessions M3K2_20261126T045229Z/045343Z/045448Z: Q1 held (SET_FILE2 status 0, library loaded and deleted, result read); Q2: /ramdsk does not exist in service mode, the result came from /tmp/jiritsu as designed; Q3 held (euid 0, /dev/mem opens); Q4 held for the address: LIRO header at 0x035C6000 and imager_code / fe_selector_code SAME, liro parameter adr = 0x635C6000; but the first 64 KB (image_start) differed, with a different hash in each run (live data), so the v1 identity check refused and test1/test2 wrote nothing; Q5-Q8 not reached. CPU: 4 x Cortex-A5 (part 0xc05), VFPv3-D16/VFPv4, no NEON."
+ "v1_outcome": "first tester (macOS), 2026-11-26, dump/test1/test2 sessions M3K2_20261126T045229Z/045343Z/045448Z: Q1 held (SET_FILE2 status 0, library loaded and deleted, result read); Q2: /ramdsk does not exist in service mode, the result came from /tmp/jiritsu as designed; Q3 held (euid 0, /dev/mem opens); Q4 held for the address: LIRO header at 0x035C6000 and imager_code / fe_selector_code SAME, liro parameter adr = 0x635C6000; but the first 64 KB (image_start) differed, with a different hash in each run (live data), so the v1 identity check refused and test1/test2 wrote nothing; Q5-Q8 not reached. CPU: 4 x Cortex-A5 (part 0xc05), VFPv3-D16/VFPv4, no NEON.",
+ "v2_outcome": "first tester (macOS), 2026-11-26, seven sessions M3K2_20261126T060019Z..060648Z (dump, test1, dump, putback, dump, test2, dump): Q1-Q5 held in every session (result on /tmp_network, header and both code ranges SAME, one live image page, READY (stock)); Q6: test1 DONE, the tester reported no crash and no stutter in movie mode (whether the picture was shifted is not known: no frame received); the dump 79 s later still read TEST1 with uptime running on, so RAM patches survive leaving service mode; putback DONE, READY (stock); Q7 FAILED: test2 DONE (0x107 bytes in 0x89 runs), then the camera restarted about 1 s after the stop request when movie mode started: kernel oops in task liro-kliro_101 at pc 0x639357b0 (str r7,[r7], r7 = 0) = the forced stop after \"S-Ele Refresh ng force exception\" (refresh counter > 10); Q8: the restart itself restored 4.04 (dump 40 s later: all blocks STOCK, movie-mode staging 373/1706/4/0x11/0x17)."
 }

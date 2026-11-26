@@ -1,6 +1,6 @@
 @echo off
-rem A7 III (firmware 4.04) kit 2, step test2: TEST 2: the whole 3:2 sensor height recorded squeezed into the stock 4K file.
-rem Changes the camera's RAM until a battery pull or open_gate_putback.cmd. Stretch the clip vertically by 1.185 to see it right.
+rem A7 III (firmware 4.04) kit 2, step test2: TEST 2: the whole 3:2 sensor height recorded squeezed into the stock 4K file (sensor, front end and frame timing).
+rem Changes the camera's RAM until a restart, a battery pull or open_gate_putback.cmd. Stretch the clip vertically by 1.185 to see it right.
 rem Camera: USB Connection = Mass Storage, dial on a stills mode (P/A/S/M), connected. See K2_TEST.md.
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (

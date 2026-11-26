@@ -1,24 +1,30 @@
-"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v2): the first open-gate test, and a debug dump.
+"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v3): open-gate tests, and a debug dump.
 
-v2 (2026-11-26), after the first run on a tester's camera: v1 refused every write because it required the first 64 KB
-of av-cam in memory to equal the file, and they hold data that changes while the camera runs (three runs, three
-hashes). The same runs confirmed av-cam's location: the LIRO header and both deeper code ranges were identical to 4.04.
-v2 requires the header and those two ranges, reports the first 64 KB page by page, and writes its result to the RAM
-tmpfs /tmp_network (/ramdsk does not exist in service mode). a7m3_map FINDINGS M3-F038.
+v3 (2026-11-26), after the second run on a tester's camera (a7m3_map FINDINGS M3-F039..F041): v2's test 1 ran with no
+fault; v2's test 2 restarted the camera when movie mode started. The restart was the firmware's own forced stop
+("S-Ele Refresh ng force exception") after ten refreshes of a lost output sync, and it put the 4.04 bytes back by
+itself. Cause as far as the firmware shows it: test 2 made the front-end records 624 lines taller but left the
+camera-core timing pair of that drive at the stock 3436 lines. v3 moves the timing pair with the records, adds two
+smaller heights, and the dump now also copies the camera's application log.
 
-Four steps, each one service session that loads one small helper library on the camera (helper/m3og.c, design og_m3_v1
-of a7m3_map; modding/OG_M3_V1.md there):
+Six steps, each one service session that loads one small helper library on the camera (helper/m3og.c, design og_m3_v2
+of a7m3_map; modding/OG_M3_V2.md there):
 
-  dump      READ-ONLY. Kernel and memory facts, the kernel log, where av-cam sits in memory (checked against the 4.04
-            file), what every byte of the design holds now (stock / test 1 / test 2), and copies of the sensor and
-            front-end tables. Run it first, and again after each movie try.
+  dump      READ-ONLY. Kernel and memory facts, the kernel log and the application log, where av-cam sits in memory
+            (checked against the 4.04 file), what every byte of the design holds now (stock / test 1..4), and copies
+            of the sensor, front-end and timing tables. Run it first, and straight after any restart.
   test1     WRITES 7 bytes in the camera's RAM: the sensor register list of the 4K 24p/25p full-frame mode reads the
             whole sensor height (4036 rows from row 61) instead of the 16:9 band (3412 rows from row 373). The front end
             is left stock, so the recorded 16:9 picture is the TOP band of the sensor: a shift, not yet a taller picture.
-            It tests whether the camera survives a full-height read at 24p.
-  test2     WRITES test 1 plus both front-end records of that mode (heights +624, vertical scaler step 6888): the whole
-            3:2 sensor height recorded squeezed into the stock 3840x2160 file (stretch it vertically by 1.185).
-  putback   WRITES the 4.04 bytes back wherever test 1 or test 2 changed them. A battery pull does the same.
+            Ran on a camera with no fault.
+  test2     WRITES the sensor window, both front-end records of that mode (heights +624, vertical scaler step 6888) and
+            the camera-core timing pair (2030 line pairs; cycle 726, or 696 in the 50 system): the whole 3:2 sensor
+            height recorded squeezed into the stock 3840x2160 file (stretch it vertically by 1.185). The line rate is
+            15 % (18 %) above stock: the camera may not keep up, in which case it restarts and is stock again.
+  test3     The same three parts for half the extra height: 3724 rows, picture 3688 rows (stretch 1.092), line rate
+            6 % (9 %) above stock.
+  test4     The same for a quarter: 3568 rows, picture 3532 rows (stretch 1.046), line rate 2 % (5 %) above stock.
+  putback   WRITES the 4.04 bytes back wherever a test changed them. A restart or a battery pull does the same.
 
 Nothing is written to flash except Sony's own service step: the library itself is written to the service work
 partition (/tmp/jiritsu/libJit.so, which is how the camera loads it) and deleted again in the same session. The helper
@@ -46,7 +52,7 @@ the PC; the guard refuses anything else before a byte is sent.
   python -I -B m3og.py <step> --go --firmware-shown 4.04
 
 Results: windows/camera_private/M3K2_<time>_<step>/ (manifest.json, transcript.jsonl, m3og_result.txt; the dump also
-klog.txt and one .bin per memory range).
+klog.txt, alog.txt and one .bin per memory range).
 """
 import argparse
 import contextlib
@@ -64,7 +70,7 @@ sys.path.insert(0, str(HERE.parent / "CT1_usb_first_contact"))
 import ct1_common as c                 # noqa: E402  guards, session log, pinned PMCA-RE
 import ct1_stage2_service as s2        # noqa: E402  connect(), libusb_devices()
 
-KIT = "m3kit2_v2"
+KIT = "m3kit2_v3"
 TEST = "M3K2"
 EXPECTED_MODEL = "ILCE-7M3"
 EXPECTED_FIRMWARE = "4.04"
@@ -74,14 +80,18 @@ KNOWN = json.loads((HERE.parent / "K1_readonly" / "expected_404.json").read_text
 
 # step -> (library, SHA-256, writes?, what it does)
 STEPS = {
-    "dump": ("libJit_m3og_dump.so", "aadfef5605bbc4454bdd6f46e6d4fb57baa7d90ed79503665df40dece4407923", False,
-             "read-only dump: facts, kernel log, where av-cam is, what the design's bytes hold, sensor and front-end tables"),
-    "test1": ("libJit_m3og_test1.so", "1b0dd0e9fae216f86f38c2a0c2e646dd4e82dcfa1d14994961a60589e03d7c30", True,
+    "dump": ("libJit_m3og_dump.so", "06a82e7e23447c36929a6df9acb3458b6e85366e93bbc07729ac00d9734bf112", False,
+             "read-only dump: facts, kernel and application log, where av-cam is, what the design's bytes hold, the tables"),
+    "test1": ("libJit_m3og_test1.so", "0c456507951e93034f6c9211314713f8f53e0cfe544644250a390e13e9e97d87", True,
               "TEST 1: the 4K 24p/25p full-frame sensor mode reads the whole sensor height (7 bytes)"),
-    "test2": ("libJit_m3og_test2.so", "4f5e9fcc57d41544f088f4d0c98cd2814d33464100b52101655d959fc0704a23", True,
-              "TEST 2: test 1 plus the front end: the whole 3:2 height squeezed into the stock 4K file"),
-    "putback": ("libJit_m3og_putback.so", "7ba59b792b915ec838c2f767641dfc9e34a1c7e79db66244e8c39f9b5bb6daf2", True,
-                "PUT BACK: the 4.04 bytes again wherever test 1 or test 2 changed them"),
+    "test2": ("libJit_m3og_test2.so", "d6e8d5f1b050f84994b1944f24e838e5674fae7f7b4a0e9126ce30733340d095", True,
+              "TEST 2: sensor + front end + timing: the whole 3:2 height squeezed into the stock 4K file"),
+    "test3": ("libJit_m3og_test3.so", "15073da4f7e73456da4c2db94e1be282f8466509880279bbabe67cdd5045a53f", True,
+              "TEST 3: as test 2 for half the extra height (picture 3688 rows)"),
+    "test4": ("libJit_m3og_test4.so", "5b07b3e3d6be20a562b11c37473794f29bf1934df54dbf321d17e517389b4d7e", True,
+              "TEST 4: as test 2 for a quarter of the extra height (picture 3532 rows)"),
+    "putback": ("libJit_m3og_putback.so", "4e19f3407be1200e616d5c9244cff04717fcd4b464685936ba2fc3b507ef8b78", True,
+                "PUT BACK: the 4.04 bytes again wherever a test changed them"),
 }
 PINNED = {sha for _n, sha, _w, _t in STEPS.values()}
 LIB_MAX = 65520                                  # one upload packet (the A7 IV client's bound)
@@ -316,9 +326,10 @@ def steps(session, camera, step, lib, out):
     facts = out["result"] = parse_result(result, step)
     for name, blob in facts.pop("_ranges", {}).items():
         session.save_bytes("mem_%s.bin" % name, blob)
-    klog = facts.pop("_klog", None)
-    if klog is not None:
-        session.save_bytes("klog.txt", klog)
+    for key, name in (("_klog", "klog.txt"), ("_alog", "alog.txt")):
+        blob = facts.pop(key, None)
+        if blob is not None:
+            session.save_bytes(name, blob)
     rec = delete(session, camera, path, out, "result_delete")
     session.say("Result read (%d bytes) and %s" % (len(result), "deleted" if rec.get("gone") else "NOT deleted (%s)" % rec))
     say_result(session, facts)
@@ -336,7 +347,7 @@ def parse_result(data, step):
                    else "NOT DONE" if pick("NOT DONE: ") else "UNKNOWN")
     blocks = {}
     for ln in lines:
-        m = re.match(r"block (\S+) va (0x[0-9a-f]+) len (0x[0-9a-f]+) .*  (STOCK|TEST1|TEST2|MIXED|OTHER)$", ln)
+        m = re.match(r"block (\S+) va (0x[0-9a-f]+) len (0x[0-9a-f]+) .*  (STOCK|TEST[1-4]|MIXED|OTHER)$", ln)
         if m:
             blocks.setdefault(m.group(1), []).append(m.group(4))
     facts = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "header": lines[0] if lines else "",
@@ -345,6 +356,7 @@ def parse_result(data, step):
              "identity_same": sum(1 for ln in lines if ln.endswith("SAME as the 4.04 file")),
              "image_pages_live": [ln.split()[2] for ln in lines if ln.startswith("page va ") and "differs from 4.04" in ln],
              "identity_differs": sum(1 for ln in lines if ln.endswith("DIFFERS from the 4.04 file")),
+             "tv_system": next((ln.split("tv system ", 1)[1].strip() for ln in lines if ln.startswith("slot 28 hmax ") and "tv system " in ln), None),
              "verdicts": verdicts, "outcome": outcome,
              "outcome_line": pick("DONE: ") or pick("NOTHING TO DO") or pick("NOT DONE: ") or pick("!! UNDO INCOMPLETE"),
              "blocks": blocks, "problems": [ln for ln in lines if ln.startswith("!!")]}
@@ -361,9 +373,11 @@ def parse_result(data, step):
             pass
     if ranges:
         facts["_ranges"] = ranges
-    k = re.search(r"== klog phys \S+ len \S+\n(.*?)\n== end", t, re.S)
-    if k:
-        facts["_klog"] = k.group(1).encode("utf8", "replace")
+    for key in ("klog", "alog"):
+        k = re.search(r"== %s phys \S+ len \S+\n(.*?)\n== (end|cut)" % key, t, re.S)
+        if k:
+            facts["_" + key] = k.group(1).encode("utf8", "replace")
+            facts[key + "_bytes"] = len(facts["_" + key])
     return facts
 
 
@@ -374,6 +388,8 @@ def say_result(session, f):
     if f["image_pages_live"]:
         session.say("  %d of the first 16 image pages hold live data (reported only, not required): %s"
                     % (len(f["image_pages_live"]), " ".join(f["image_pages_live"])))
+    if f.get("tv_system"):
+        session.say("  TV system of the 4K full-frame drive: " + f["tv_system"])
     for v in f["verdicts"]:
         session.say("  VERDICT " + v)
     if f["outcome"]:
@@ -386,19 +402,20 @@ def say_result(session, f):
 
 def canned_result(step, state):
     """What the helper would report on a model camera when it cannot be emulated here (the kit ships no firmware).
-    state: the design's state before the step ('stock', 'test1', 'test2'). Returns (text, new state)."""
-    name = {"stock": "READY (stock)", "test1": "READY (test 1 applied)", "test2": "READY (test 2 applied)"}
-    lines = ["m3og m3og_v2 level %s for ILCE-7M3 4.04" % step, "euid 0x00000000 pid 0x00000001",
+    state: the design's state before the step ('stock', 'test1' .. 'test4'). Returns (text, new state)."""
+    name = {"stock": "READY (stock)", **{"test%d" % n: "READY (test %d applied)" % n for n in (1, 2, 3, 4)}}
+    lines = ["m3og m3og_v3 level %s for ILCE-7M3 4.04" % step, "euid 0x00000000 pid 0x00000001",
              "== file /proc/cmdline", "(simulated camera)", "== end 0x00000012 bytes", "== identity"]
     lines += ["lirohdr  SAME as the 4.04 file"] + ["range r%d  SAME as the 4.04 file" % k for k in range(2)]
     lines += ["page va 0x635c6000 sha256 00  differs from 4.04 (live data, not required)"]
     lines += ["page va 0x%08x sha256 00  matches 4.04" % (0x635c6000 + 0x1000 * k) for k in range(1, 16)]
+    lines += ["== tv system", "slot 28 hmax 0x0000020d slot 27 hmax 0x00000001  tv system 59.94 (slot 28)"]
     lines += ["VERDICT " + name[state]]
     new = state
     if STEPS[step][2]:
-        target = {"test1": "test1", "test2": "test2", "putback": "stock"}[step]
-        if step == "test1" and state == "test2":
-            lines.append("NOT DONE: block fe_rec_0a byte at 0x63e0d79a holds 0xd2 (test 2 is applied: run the put-back first); nothing is written")
+        target = "stock" if step == "putback" else step
+        if step != "putback" and state not in ("stock", step) and not (step == "test2" and state == "test1"):
+            lines.append("NOT DONE: block fe_rec_0a byte at 0x63e0d79a holds 0xd2 (another test is applied: run the put-back first); nothing is written")
         elif target == state:
             lines.append("NOTHING TO DO: every byte already holds the target")
         else:
@@ -407,7 +424,8 @@ def canned_result(step, state):
         lines += ["after:", "VERDICT " + name[new]]
     else:
         lines += ["== mem staging va 0x64745700 phys 0x04745700 len 0x00000020", "0x64745700 " + "00" * 32, "== end",
-                  "== klog phys 0x035a5000 len 0x00020000", "<6>[ 0.000000] (simulated kernel log)", "== end"]
+                  "== klog phys 0x035a5000 len 0x00020000", "<6>[ 0.000000] (simulated kernel log)", "== end",
+                  "== alog phys 0x03524fc0 len 0x00060040", "(simulated application log)", "== end"]
     lines.append("== done, bytes before this line: 0x00000100")
     return ("\n".join(lines) + "\n").encode(), new
 
@@ -597,8 +615,8 @@ def emulator():
             raise AssertionError("emulated helper: %s" % r.bad)
         mem["m"] = bytes(cam.mem)
         res = b"".join(bytes(v) for v in cam.created.values())
-        v = re.findall(rb"VERDICT READY \((stock|test 1 applied|test 2 applied)\)", res)
-        st = {b"stock": "stock", b"test 1 applied": "test1", b"test 2 applied": "test2"}.get(v[-1] if v else b"", state)
+        v = re.findall(rb"VERDICT READY \((stock|test [1-4] applied)\)", res)
+        st = {b"stock": "stock", **{b"test %d applied" % n: "test%d" % n for n in (1, 2, 3, 4)}}.get(v[-1] if v else b"", state)
         return res, st
     return run
 
@@ -636,19 +654,26 @@ def selftest():
               and [p for n, p in sent(s) if n == "SET_FILE2"][0][3:] == library(step))
         check("%s: result read and deleted; unmount last; stop sent" % step,
               k2.get("result_found") == RESULT_PATHS[0].decode() and "/tmp_network/m3og_result.txt" not in sim.fs and ends_cleanly(s, sim))
-        want = {"dump": None, "test1": "DONE", "test2": "DONE", "putback": "NOTHING TO DO"}[step]
+        want = {"dump": None, "putback": "NOTHING TO DO"}.get(step, "DONE")
         check("%s: result header ok, complete, verdict READY (stock)%s" % (step, "" if want is None else ", outcome " + want),
               f.get("header_ok") and f.get("complete") and f.get("verdicts", [""])[0] == "READY (stock)" and f.get("outcome") == want, str(f.get("verdicts")))
     sim = make_sim(files=files, emulate=emulator())
     trail = []
-    for step in ("dump", "test1", "test2", "dump", "test1", "putback", "dump"):
+    for step in ("dump", "test1", "test2", "dump", "test1", "test3", "putback", "test3", "test4", "putback", "test4", "dump", "putback", "dump"):
         s, _m, sim = simulate(step, sim)
         f = s.results.get("k2", {}).get("result", {})
         trail.append((step, f.get("verdicts", [""])[-1], f.get("outcome")))
-    check("ladder on one camera: test1, test2, test1 refused over test2, putback back to stock",
+    check("ladder on one camera: test1, test2, others refused over test2, putback, test3, test4 refused over test3, putback, test4, putback",
           trail == [("dump", "READY (stock)", None), ("test1", "READY (test 1 applied)", "DONE"), ("test2", "READY (test 2 applied)", "DONE"),
                     ("dump", "READY (test 2 applied)", None), ("test1", "READY (test 2 applied)", "NOT DONE"),
-                    ("putback", "READY (stock)", "DONE"), ("dump", "READY (stock)", None)], str(trail))
+                    ("test3", "READY (test 2 applied)", "NOT DONE"), ("putback", "READY (stock)", "DONE"),
+                    ("test3", "READY (test 3 applied)", "DONE"), ("test4", "READY (test 3 applied)", "NOT DONE"),
+                    ("putback", "READY (stock)", "DONE"), ("test4", "READY (test 4 applied)", "DONE"),
+                    ("dump", "READY (test 4 applied)", None), ("putback", "READY (stock)", "DONE"), ("dump", "READY (stock)", None)], str(trail))
+    s, _m, sim = simulate("dump", make_sim(files=files, emulate=emulator()))
+    f = s.results.get("k2", {}).get("result", {})
+    check("dump: TV system reported, kernel log and application log saved",
+          f.get("tv_system") == "59.94 (slot 28)" and f.get("klog_bytes", 0) > 0 and f.get("alog_bytes", 0) > 0, str({k: f.get(k) for k in ("tv_system", "klog_bytes", "alog_bytes")}))
     # 2. the order of a session
     s, _m, sim = simulate("test1", make_sim(files=files))
     seq = sent(s)
@@ -781,7 +806,7 @@ def main():
         print("Nothing was sent to any device.")
         return
     if not args.step:
-        parser.error("name the step: dump, test1, test2 or putback")
+        parser.error("name the step: dump, test1, test2, test3, test4 or putback")
     lib = library(args.step)
     if args.dry_run:
         lines, _s, _sim = dry_run_lines(args.step)
@@ -793,7 +818,7 @@ def main():
                          "(MENU > Setup > Version)." % (EXPECTED_MODEL, EXPECTED_FIRMWARE))
     if STEPS[args.step][2] and not args.yes:
         print("Step %s: %s" % (args.step, STEPS[args.step][3]))
-        print("It changes the camera's working memory (RAM) until a battery pull or the put-back step. Nothing is flashed.")
+        print("It changes the camera's working memory (RAM) until a restart, a battery pull or the put-back step. Nothing is flashed.")
         if input("Type YES to go on: ").strip() != "YES":
             raise SystemExit("Not confirmed. Nothing was sent.")
     with c.Session(args.step, test=TEST) as session:
