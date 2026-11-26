@@ -302,7 +302,7 @@ def main():
         print(text)
         return
 
-    N_MEM = 17 + 6                                                    # 17 read-only ranges + the six blocks
+    N_MEM = 18 + 6                                                    # 18 read-only ranges + the six blocks
     # 1. dump on a stock camera
     cam = Camera()
     r, t = run('dump', cam)
@@ -319,7 +319,7 @@ def main():
           'dump: application log copied as text, MAC address blanked, binary runs squeezed to one dot')
     check('== dir /sys/module/liro/parameters' in t and '= 0x035c6000' in t, 'dump: liro parameters listed with values')
     check(t.count('== mem ') == N_MEM and '== mem sgc1_param' in t and '== mem refresh_state' in t and '== mem timing_rt_ntsc' in t
-          and '== mem cam_flags' in t and '== mem cam_status' in t and '== mem sync_stamps' in t and 'GUARD flag byte 0x00  refresh loop STOCK' in t
+          and '== mem cam_flags' in t and '== mem cam_status' in t and '== mem sync_stamps' in t and '== mem cam_core_state' in t and 'GUARD flag byte 0x00  refresh loop STOCK' in t
           and t.rstrip().split('\n')[-1].startswith('== done'), 'dump: %d memory ranges (new: SGC1 block, refresh state, timing blocks) and the done line' % N_MEM)
     check(list(cam.created) == ['/tmp_network/m3og_result.txt'], 'dump: result on /tmp_network (RAM)')
     # 1b. the first camera run: the first image pages hold live data. They are reported and the run goes on

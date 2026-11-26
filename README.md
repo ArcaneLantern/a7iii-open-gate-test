@@ -1,6 +1,14 @@
 # A7 III open-gate test kits (firmware 4.04)
 
-## Kit 2 v4 (2026-11-27): open-gate tests and debug dump
+## Kit 2 v5 (2026-11-27): open-gate tests and debug dump
+
+**v5, after the fourth run.** The first tester ran v4 (test 4 only; test 2 was refused because put back was skipped). The switch byte held its value. With the forced restart off the camera stayed on and stuttered. With the refresh loop off the picture was jittery and very dark. The dump shows the loop's "lost output sync" path did run. So the loop is not a false alarm: the output sync of each frame is stamped in a different frame than the firmware expects, and with the loop off the per-frame sequence (exposure among it) runs out of step.
+
+The dumps also showed that the imaging pipeline stops when USB starts, and that the firmware's time stamps of the last frame stay in memory. So a dump taken with the dial left on movie holds the timing of the last movie frame. v5 changes only the dump library (it also copies the imaging sequence's state objects) and the tester page: three dumps with the dial on movie, for stock, test 4 and test 2, give the position of the output sync in the frame at three heights. The other seven libraries are the v4 ones, byte for byte.
+
+**Tester steps: [K2_TEST.md](K2_TEST.md).**
+
+### Kit 2 v4 (2026-11-27): the refresh loop's switches
 
 **v4, after the third run.** A second tester ran v3 on a 50-system (PAL) camera. Tests 2, 3 and 4 each wrote correctly and each showed the open-gate picture on the screen for about a second after the dial went to movie. Then the camera restarted itself at the same place as in the earlier run (`0x639357b0`), and was stock again. So with the timing pair matched, the picture path works at all three heights, and the line rate is not what stops it. What stops it is the firmware's output-sync refresh loop: something starts it every frame, and after ten retries in a row it forces the restart.
 
@@ -62,7 +70,7 @@ The test design (`og_m3_v2`) comes from the 4.04 firmware:
 
 What is not known: whether the pair is the only thing the camera core needs, and whether the front end keeps up with the shorter line period. If a test restarts the camera, the dump taken right after now includes the application log, where the firmware writes which check gave up.
 
-On the A7 III so far: v1 confirmed the location and wrote nothing. v2 test 1 passed; v2 test 2 restarted the camera. v3 tests 2 to 4 (second tester, 50 system) each gave a picture for about a second, then the forced restart. The v4 switch steps have not run yet.
+On the A7 III so far: v1 confirmed the location and wrote nothing. v2 test 1 passed; v2 test 2 restarted the camera. v3 tests 2 to 4 (second tester, 50 system) each gave a picture for about a second, then the forced restart. v4 (first tester, test 4): no restart with the switch set, but a stuttering picture, and a jittery dark one with the loop off. The v5 timing read has not run yet.
 
 Commands, from `windows` (after `setup.cmd`):
 

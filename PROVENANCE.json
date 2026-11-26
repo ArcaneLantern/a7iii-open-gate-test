@@ -147,7 +147,7 @@
   }
  },
  "kit2": {
-  "kit": "m3kit2_v4",
+  "kit": "m3kit2_v5",
   "written": "2026-11-26, by hand (publish_a7m3.py writes kit 1 only)",
   "design": "a7m3_map/modding/designs/og_m3_v2.json (build/opengate/build_og_m3.py)",
   "helper_build": "bash helper/build_m3og.sh (zig 0.13.0, arm-linux-gnueabi, cortex_a5 without NEON/VFP)",
@@ -173,15 +173,15 @@
   "files": {
    "windows/tools/camera_tests/K2_open_gate/m3og.py": {
     "source": "a7m3_map/camera_tests/K2_open_gate/m3og.py",
-    "sha256": "9a1352105a63d91fd76b73b514600b12f21a3f3d9d54a14637a51d67cdfd19dc"
+    "sha256": "b37592af22ac9f5dc66c2457088f2234bf9653b234d09d39a32c642c8a2c0d8e"
    },
    "windows/tools/camera_tests/K2_open_gate/predictions.json": {
     "source": "a7m3_map/camera_tests/K2_open_gate/predictions.json",
-    "sha256": "a43d6ea47023c73b60c44a0e2ff536a7474665a207aaed1e577e22e97daf75a2"
+    "sha256": "4d037fea5a5feb8f6cf76961d946b1ecbb340c1fa3b506d5afabbbb80ba87987"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_dump.so": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_dump.so",
-    "sha256": "e8fca0be77b9c03f5110b2c70edc65bac6068f236d23a90bc890db0d6cc6e69c"
+    "sha256": "d38f8a2f55a535081df876bd75b699f1673878df6e8628fc419df1f13a80c028"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_test1.so": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_test1.so",
@@ -217,7 +217,7 @@
    },
    "windows/tools/camera_tests/K2_open_gate/helper/m3og_design.h": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/m3og_design.h",
-    "sha256": "bf0a0ea3e4d29af7a4c042a4bf3026c91787a15d80ec10bece464be3179cb56e"
+    "sha256": "cef695a85b3becc2b6b6dfe3cddd3ccad5494f26446f5109d948d5234c5474c0"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/build_m3og.sh": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/build_m3og.sh",
@@ -225,7 +225,7 @@
    },
    "windows/tools/camera_tests/K2_open_gate/helper/emu_m3og.py": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/emu_m3og.py",
-    "sha256": "fed3a3d05a730bb833d6115392d1f6630fb35b3c1619f5fe8abbe5fe6aafb69d"
+    "sha256": "3724c3dc69529c9e7dfba809f1c25e2bc4231be3e89157ffef634be048f25083"
    }
   }
  }

@@ -1,4 +1,10 @@
-"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v4): open-gate tests, and a debug dump.
+"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v5): open-gate tests, and a debug dump.
+
+v5 (2026-11-27), after the v4 run (a7m3_map FINDINGS M3-F043): with the forced restart switched off the camera stays
+on and stutters; with the refresh loop off the picture is jittery and dark; the loop's lost-output-sync path did run.
+The imaging pipeline stops when USB starts, so a dump holds the time stamps of the last frame before USB. v5 changes
+only the dump (it also copies the imaging sequence's state objects) and reports that last frame's timing; the tester
+page now takes the dumps with the dial left on movie.
 
 v4 (2026-11-27), after a second tester's run of v3 on a 50-system camera (a7m3_map FINDINGS M3-F042): tests 2, 3 and 4
 each showed the open-gate picture for about a second, then the camera restarted itself at the same place as before.
@@ -81,7 +87,7 @@ sys.path.insert(0, str(HERE.parent / "CT1_usb_first_contact"))
 import ct1_common as c                 # noqa: E402  guards, session log, pinned PMCA-RE
 import ct1_stage2_service as s2        # noqa: E402  connect(), libusb_devices()
 
-KIT = "m3kit2_v4"
+KIT = "m3kit2_v5"
 TEST = "M3K2"
 EXPECTED_MODEL = "ILCE-7M3"
 EXPECTED_FIRMWARE = "4.04"
@@ -91,7 +97,7 @@ KNOWN = json.loads((HERE.parent / "K1_readonly" / "expected_404.json").read_text
 
 # step -> (library, SHA-256, writes?, what it does)
 STEPS = {
-    "dump": ("libJit_m3og_dump.so", "e8fca0be77b9c03f5110b2c70edc65bac6068f236d23a90bc890db0d6cc6e69c", False,
+    "dump": ("libJit_m3og_dump.so", "d38f8a2f55a535081df876bd75b699f1673878df6e8628fc419df1f13a80c028", False,
              "read-only dump: facts, logs, where av-cam is, what the design's bytes hold, the tables, the refresh loop's state"),
     "test1": ("libJit_m3og_test1.so", "14ff271975cd640d40a38625dc979077ab31e365893dab2dea6956e04f9fa916", True,
               "TEST 1: the 4K 24p/25p full-frame sensor mode reads the whole sensor height (7 bytes)"),
@@ -389,12 +395,36 @@ def parse_result(data, step):
             pass
     if ranges:
         facts["_ranges"] = ranges
+    facts["last_frame"] = last_frame(ranges)
     for key in ("klog", "alog"):
         k = re.search(r"== %s phys \S+ len \S+\n(.*?)\n== (end|cut)" % key, t, re.S)
         if k:
             facts["_" + key] = k.group(1).encode("utf8", "replace")
             facts[key + "_bytes"] = len(facts["_" + key])
     return facts
+
+
+def last_frame(ranges):
+    """The timing of the last frame before USB stopped the imaging pipeline, from the dump's memory ranges (the firmware's
+    own time stamps, in half microseconds): how long after the sensor frame start (CamV) the output sync (CamOutV) came.
+    The CamV stamp keeps ticking on its grid while USB is on, so the phase is taken modulo the frame time."""
+    try:
+        def cell(prefix, va):
+            name = next(k for k in ranges if k.startswith(prefix + "_0x"))
+            base = int(name.rsplit("_0x", 1)[1], 16)
+            return struct.unpack_from("<I", ranges[name], va - base)[0]
+        h, v = cell("sgc1_param", 0x64326DC4 + 0x38), cell("sgc1_param", 0x64326DC4 + 0x3C)
+        clocks = 1440000 if (h, v) == (525, 2740) else h * v            # the 50-system 4K row has a fractional part
+        frame = clocks / 36.0 * 2                                       # in half microseconds
+        camv, camout = cell("sync_stamps", 0x6435643C), cell("sync_stamps", 0x64356064)
+        phase = (-((camv - camout) % 0x100000000)) % frame
+        return {"sgc1_h": h, "sgc1_v": v, "frame_ms": round(frame / 2000.0, 4), "camoutv_after_camv_ms": round(phase / 2000.0, 3),
+                "camoutv_stamp": camout, "eestart_before_camoutv_ms": round(((camout - cell("sync_stamps", 0x64356440)) % 0x100000000) / 2000.0, 3),
+                "idtdriver_before_camoutv_ms": round(((camout - cell("sync_stamps", 0x64356438)) % 0x100000000) / 2000.0, 3),
+                "refresh_counter": cell("refresh_state", 0x643548DC), "kick_frame": cell("refresh_state", 0x64354794),
+                "camoutv_frame": cell("refresh_state", 0x643547C8), "lost_sync_seen": cell("refresh_latch", 0x64688AA8) >> 8 & 0xFF}
+    except Exception:                                                   # an older or cut dump: no figures
+        return None
 
 
 def say_result(session, f):
@@ -410,6 +440,10 @@ def say_result(session, f):
         session.say("  VERDICT " + v)
     if f.get("guard"):
         session.say("  Refresh-loop switch: " + f["guard"][-1])
+    lf = f.get("last_frame")
+    if lf:
+        session.say("  Last frame before USB: frame %.3f ms (cycle %d x %d), output sync %.3f ms after frame start, refresh count %d, lost sync seen: %s"
+                    % (lf["frame_ms"], lf["sgc1_h"], lf["sgc1_v"], lf["camoutv_after_camv_ms"], lf["refresh_counter"], "yes" if lf["lost_sync_seen"] else "no"))
     if f["outcome"]:
         session.say("  Outcome: %s  (%s)" % (f["outcome"], f["outcome_line"]))
     for p in f["problems"]:

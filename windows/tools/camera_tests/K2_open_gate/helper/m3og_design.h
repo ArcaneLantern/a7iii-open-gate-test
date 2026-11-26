@@ -499,7 +499,7 @@ static const struct block BLK_SYS[2][N_SYSBLK] = {
 #define GUARD_VA 0x6433cd5eu
 #define GUARD_OFF 0x02u
 #define GUARD_NOFORCE 0x40u
-#define N_DUMP 17
+#define N_DUMP 18
 static const struct range DUMP[N_DUMP] = {
     {"staging", 0x64745700u, 0x740u},
     {"drvp_ids_cols", 0x63e20220u, 0x9f0u},
@@ -518,4 +518,5 @@ static const struct range DUMP[N_DUMP] = {
     {"cam_flags", 0x6433cc70u, 0x100u},
     {"cam_status", 0x6433aa40u, 0x40u},
     {"sync_stamps", 0x64355f80u, 0x4e0u},
+    {"cam_core_state", 0x640e0998u, 0x3d00u},
 };
