@@ -1,8 +1,9 @@
 {
- "kit": "m3kit1_v1",
+ "kit": "m3kit1_v2",
  "camera": "ILCE-7M3, firmware 4.04",
- "written": "2026-11-24, before any contact with an A7 III",
- "basis": "a7m3_map FINDINGS.md M3-F002, F006, F011, F027 (static analysis of the 4.04 update)",
+ "written": "P1-P7 2026-11-24, before any contact with an A7 III; P8-P10 2026-11-26, after the first tester's v1 run and before any v2 run",
+ "basis": "a7m3_map FINDINGS.md M3-F002, F006, F011, F027, F030 (static analysis of the 4.04 update)",
+ "v1_outcome": "first tester (macOS): P1-P3 held (054C:0C02 -> 054C:0336, authentication 4/4/4/6 on both devices, READ_HASP 88 bytes); P4 not reached: GET_FILE2 answered 0x10000004 with no data because the kit never sent Jiritsu MOUNT (M3-F030)",
  "predictions": [
   {"id": "P1", "claim": "The camera in Mass Storage mode answers PMCA-RE's start request and comes back as a service device with USB id 054C:0336 (the A7 IV's), or 054C:02A9.", "source": "M3-F006 (same Senser gadget); A7 IV CT1"},
   {"id": "P2", "claim": "Authentication with PMCA-RE's public keys passes on the service device: three rounds answered 4, closing answer 6.", "source": "M3-F006: libsencore holds the A7 IV's three key blocks byte for byte"},
@@ -10,6 +11,9 @@
   {"id": "P4", "claim": "/usr/share/pmbp/DeviceInfo.xml is 517 bytes, SHA-256 e44713178fad970870ead845c93abdfcf150c418de11b306da91f2d09d67c1b7 (the same file as the A7 IV's).", "source": "4.04 update"},
   {"id": "P5", "claim": "/usr/lib/libJiritsu.so, /usr/lib/libsencore.so, /usr/codec/vcd_firmware.bin and /system/av-cam.bin equal the 4.04 update's files (sizes and SHA-256 in expected_404.json).", "source": "4.04 update; mount.conf (/usr = nflasha15, /system = nflasha3)"},
   {"id": "P6", "claim": "/setting/DmmConfig.bin exists and equals update/0800_appli/setting/DmmConfig.bin. Low confidence: the installed copy may differ or be missing.", "source": "4.04 update; mount.conf (/setting = nflasha2)"},
-  {"id": "P7", "claim": "/proc/cpuinfo and /proc/iomem come back with no content (the file read sizes a file with stat, and /proc files report size 0).", "source": "libJiritsu.so calls __xstat; A7 IV CT1 /proc/cmdline came back empty"}
+  {"id": "P7", "claim": "/proc/cpuinfo and /proc/iomem come back with no content (the file read sizes a file with stat, and /proc files report size 0).", "source": "libJiritsu.so calls __xstat; A7 IV CT1 /proc/cmdline came back empty"},
+  {"id": "P8", "claim": "Jiritsu MOUNT (0x4002, payload 00 00) succeeds: it creates /tmp/jiritsu and mounts /dev/nflasha6 there. Medium confidence: whether nflasha6 holds a valid FAT on a retail camera is unknown; if it does not, MOUNT fails and the first read again answers 0x10000004.", "source": "M3-F030: libJiritsu cmd_mount 0x58cc, sys_mount 0x3834"},
+  {"id": "P9", "claim": "With the work area mounted, GET_FILE2 of ../../usr/share/pmbp/DeviceInfo.xml returns status 0 and the 517-byte file of P4.", "source": "M3-F030: adj_cmd_get_file2 0x53e0, get_access_filename 0x4f6c ('%s/%s' with /tmp/jiritsu)"},
+  {"id": "P10", "claim": "The unmount form (00 01) answers without error and removes /tmp/jiritsu; the stop request then returns the camera to normal as in v1.", "source": "M3-F030: cmd_mount sub 1 = sys_umount + sys_file_remove"}
  ]
 }

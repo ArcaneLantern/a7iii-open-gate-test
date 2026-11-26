@@ -1,10 +1,10 @@
-# A7 III test kit 1: read-only check (firmware 4.04)
+# A7 III test kit 1 v2: service-mode file check (firmware 4.04)
 
-**Follow-up for a first report showing `0x10000004` and zero bytes of `DeviceInfo.xml`.** The 4.04 service file handler can return this status if its mount step fails before it looks up the file. The first report contains no file bytes to compare and no underlying OS error. Use the [public USB file check](PMHOME_TEST.md) on Windows or macOS. It compares a file exposed through the normal PMHOME volume with the update and saves a small ZIP you can send back.
+**Kit 1 v2 (2026-11-26).** The first run of kit 1 logged in to service mode, then its first file read answered `0x10000004`. The 4.04 firmware explains why. Every service file command mounts the camera's service work area (`/dev/nflasha6` on `/tmp/jiritsu`). Only Sony's own Jiritsu MOUNT command creates that folder, and kit 1 v1 never sent it, because the A7 IV kits it came from do not need it. v2 sends MOUNT before the reads and always sends the matching unmount afterwards. Short tester steps: [K1V2_TEST.md](K1V2_TEST.md). The [public USB file check](PMHOME_TEST.md) has already been done (`control_match`).
 
 This is the first camera step of a study of the Sony A7 III (ILCE-7M3) firmware 4.04. The study's goals are open gate (full-height 3:2 video), the video encoder, and 10-bit recording.
 
-**This kit only reads. It changes nothing in the camera: no setting, no file, no memory.**
+**This kit writes no camera file, setting or memory.** For the length of the run, the camera's service work area is mounted, as Sony's own service software does. At the end it is unmounted and its folder removed.
 
 It answers four questions before anything else is built for this camera:
 
@@ -21,7 +21,8 @@ One USB session with the camera in Mass Storage mode:
 
 1. It switches the camera to service mode and logs in. This uses the public procedure from Sony-PMCA-RE, the same as the A7 IV and A7S III kits.
 2. It reads the product information (`READ_HASP`).
-3. It reads these files and compares each with the 4.04 update (size and SHA-256 checksum):
+3. It mounts the service work area (Jiritsu MOUNT): this creates the folder `/tmp/jiritsu` and mounts `/dev/nflasha6` there.
+4. It reads these files and compares each with the 4.04 update (size and SHA-256 checksum):
 
    | File | Why |
    |---|---|
@@ -32,9 +33,16 @@ One USB session with the camera in Mass Storage mode:
    | `/setting/DmmConfig.bin` | memory configuration; may be missing |
    | `/proc/cpuinfo`, `/proc/iomem` | expected to come back empty |
 
-4. It always ends with the stop request. The camera then leaves service mode; switch it off and on if it does not return to normal.
+5. It always unmounts the work area and removes `/tmp/jiritsu` (Jiritsu MOUNT, unmount form), even if a read failed.
+6. It always ends with the stop request. The camera then leaves service mode; switch it off and on if it does not return to normal.
 
-Only three service commands can be sent: `READ_HASP`, `SET_FILE_PATH` (for the paths above only) and `GET_FILE2`. The script refuses anything else before a byte leaves the PC: write, delete, format, settings commands, memory commands. `selftest.cmd` shows this.
+Only four service commands can be sent:
+- `READ_HASP`;
+- Jiritsu MOUNT, with exactly the mount and unmount payloads for the work area (never the memory card);
+- `SET_FILE_PATH`, for the paths above only;
+- `GET_FILE2`.
+
+The script refuses anything else before a byte leaves the PC: write, delete, format, firmware, settings and memory commands. `selftest.cmd` shows this.
 
 The settings backup is **not** read, because it would carry personal data. Large files are not saved, only their size and checksum.
 
@@ -61,14 +69,14 @@ The settings backup is **not** read, because it would carry personal data. Large
 2. Run macos/setup.command by dragging it into your terminal window, running it directly from finder usually results in a ton of permissions errors.
 3. Run macos/selftest.command the same way.
 4. Run macos/list_devices.command the same way too.
-5. Run macos/check_readonly.command. This reads all the read only data required for testing.
+5. Run macos/check_readonly.command. This runs kit 1 v2 (the service-mode file check).
 
 ## The run
 
 1. Camera on, Mass Storage mode, connected.
 2. Run `windows/check_readonly.cmd` and type the version the camera's menu shows (`4.04`).
 3. On a first run it may stop with "EXPECTED on a first run: … no libusb driver yet". Leave the camera on and connected, do the Zadig step for the service device, and run again.
-4. The end of the output shows the verdict: `4.04 CONFIRMED` or `NOT MATCHING: <files>`.
+4. The end of the output shows the verdict: `4.04 CONFIRMED`, `NOT MATCHING: <files>` or `UNVERIFIED: …`.
 
 ## Please send back
 
@@ -85,7 +93,7 @@ Serial numbers are masked in the device listings.
 - Its video codec is the A7 IV's codec family. The codec firmware has a complete 10-bit path, and the camera's encoder tables already contain 10-bit 4:2:2 rows that its menus never use.
 - The sensor's 4K 24p full-width read-out takes about 25 ms. A full-height read-out would fit a 24p frame.
 
-None of this has been tried on a camera. This kit is the first contact.
+On the first tester's camera, the service-mode login and `READ_HASP` worked (kit 1 v1). The built-in PMHOME volume matches 4.04 (public USB file check). The file reads are what v2 tests.
 
 ## Licence and third-party code
 
