@@ -105,8 +105,19 @@ def body(session, camera, expected):
             row["error"] = "%s: %s" % (type(exc).__name__, exc)
             session.say("  no answer: %s" % row["error"])
             raise c.StopTest("a file read got no answer; stopping (nothing is retried)")
+        row.update(status=status, bytes=len(data))
+        if status != 0:
+            detail = "truncated status word" if status is None else "GET_FILE2 status 0x%08x" % status
+            if status == 0x10000004:
+                detail += " (4.04 handler reports a mount failure before file lookup)"
+            row["error"] = detail
+            session.say("  %s; file contents unverified" % detail)
+            if known:
+                session.results["verdict"] = "UNVERIFIED: known-answer read failed: %s" % detail
+                raise c.StopTest("known-answer read failed: %s; firmware identity unverified" % detail)
+            continue
         digest = hashlib.sha256(data).hexdigest()
-        row.update(status=status, bytes=len(data), sha256=digest)
+        row["sha256"] = digest
         want = expected.get(path)
         if want:
             row["matches_404"] = (len(data), digest) == (want["bytes"], want["sha256"])
@@ -118,7 +129,9 @@ def body(session, camera, expected):
         if known and not row.get("matches_404"):
             raise c.StopTest("the known-answer file %s does not match the 4.04 update; nothing more is read" % path)
     required = [r for r in rows if r["required"]]
-    if all(r.get("matches_404") for r in required):
+    if any("error" in r for r in required):
+        verdict = "UNVERIFIED: required file read failed: %s" % ", ".join(r["path"] for r in required if "error" in r)
+    elif all(r.get("matches_404") for r in required):
         verdict = "4.04 CONFIRMED: every required file equals the 4.04 update"
     else:
         verdict = "NOT MATCHING: %s" % ", ".join(r["path"] for r in required if not r.get("matches_404"))
@@ -230,6 +243,23 @@ def selftest():
           len(session.results.get("files", [])) == 1 and "known-answer" in session.results.get("stopped", ""))
     vendor = [e["name"] for e in session.events if e["kind"] == "usb_vendor_out"]
     check("  ... and still sends the stop request", vendor[-1:] == ["STOP_SENSER"])
+    # The first tester got only a four-byte mount error, with no file payload.
+    from unittest.mock import Mock
+    for answer in (bytes.fromhex("04000010"), b"\x00\x00"):
+        probe = Mock()
+        probe.readHasp.return_value = b""
+        probe._sendAdjustControlPacket.side_effect = [bytes(4), answer]
+        session = c.Session("sim", write=False, test="M3K1")
+        with contextlib.redirect_stdout(io.StringIO()):
+            try:
+                body(session, probe, expected)
+            except c.StopTest as exc:
+                session.results["stopped"] = str(exc)
+        row = session.results["files"][0]
+        check("status-only/short reply %s leaves identity unverified" % answer.hex(),
+              "unverified" in session.results.get("stopped", "")
+              and "error" in row and "matches_404" not in row and "sha256" not in row
+              and probe._sendAdjustControlPacket.call_count == 2)
     # 3. a required file differs -> all read, verdict NOT MATCHING
     bad = dict(files)
     orig = files[wire("/system/av-cam.bin")]

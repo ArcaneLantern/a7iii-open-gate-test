@@ -1,5 +1,7 @@
 # A7 III test kit 1: read-only check (firmware 4.04)
 
+**Follow-up for a first report showing `0x10000004` and zero bytes of `DeviceInfo.xml`.** The 4.04 service file handler can return this status if its mount step fails before it looks up the file. The first report contains no file bytes to compare and no underlying OS error. Use the [public USB file check](PMHOME_TEST.md) on Windows or macOS. It compares a file exposed through the normal PMHOME volume with the update and saves a small ZIP you can send back.
+
 This is the first camera step of a study of the Sony A7 III (ILCE-7M3) firmware 4.04. The study's goals are open gate (full-height 3:2 video), the video encoder, and 10-bit recording.
 
 **This kit only reads. It changes nothing in the camera: no setting, no file, no memory.**
