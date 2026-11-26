@@ -1,4 +1,42 @@
-# A7 III test kit 1 v2: service-mode file check (firmware 4.04)
+# A7 III open-gate test kits (firmware 4.04)
+
+## Kit 2 (2026-11-26): first open-gate test and debug dump
+
+**Tester steps: [K2_TEST.md](K2_TEST.md).** Kit 1 v2 confirmed that the first tester's camera runs exactly the 4.04 software and that its service file commands work. Kit 2 is the first step that changes something, and only in the camera's working memory (RAM). A battery pull undoes it.
+
+Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built four times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to the camera's RAM disk (`/ramdsk`), from where it is read back and deleted.
+
+| Step | Windows / macOS launcher | Writes to RAM | What it does |
+| --- | --- | --- | --- |
+| dump | `open_gate_dump` | nothing | Kernel facts and log, where the imaging program `av-cam` sits in memory (checked against the 4.04 file), what every test byte holds, copies of the sensor and front-end tables |
+| test 1 | `open_gate_test1` | 7 bytes | 4K 24p/25p full frame: the sensor reads all 4036 rows from row 61, instead of 3412 rows from row 373. The front end stays stock, so the 16:9 picture shows the sensor's top band. This tests the full-height read. |
+| test 2 | `open_gate_test2` | 7 bytes + 130 words | Test 1 plus both front-end records of that mode (heights +624, vertical scaler step 6888). The whole 3:2 height is recorded squeezed into the stock 3840×2160 file. Stretch by 1.185. |
+| put back | `open_gate_putback` | the 4.04 bytes | Undoes test 1 or test 2 |
+
+**Safety rules built into the helper:**
+- It writes nothing unless the program header and three code ranges in memory equal the 4.04 file.
+- Every byte of the three tables it touches must hold either its 4.04 value or the step's target.
+- It writes only where those two differ, reads each write back, and puts everything back on any mismatch.
+- The read-only dump build contains no write call at all.
+
+**Safety rules in the PC script:**
+- Before a byte is sent, the guard refuses everything except READ_HASP, Jiritsu MOUNT/unmount, `SET_FILE_PATH` to listed paths, `GET_FILE2`, one `SET_FILE2` of the pinned library onto `/tmp/jiritsu/libJit.so`, and `FILE_DELETE2` of the library or the result.
+- Each library is pinned by SHA-256 in `m3og.py`.
+
+The test design (`og_m3_v1`) comes from the 4.04 firmware:
+- The IMX410 register list sets each drive mode's vertical window (registers 0x0728–0x072B).
+- The LEO front-end record of the 4K full-frame mode holds 65 height fields and the vertical scaler step.
+- The firmware's own register-list code, run in an emulator, programs the new window. The four helper builds were run in an emulator against the 4.04 memory image: 39 checks, including roll-back and every refusal.
+
+None of this has run on an A7 III yet.
+
+Commands, from `windows` (after `setup.cmd`):
+
+    .venv\Scripts\python.exe -I -B tools\camera_tests\K2_open_gate\m3og.py --selftest
+    .venv\Scripts\python.exe -I -B tools\camera_tests\K2_open_gate\m3og.py test2 --dry-run
+    .venv\Scripts\python.exe -I -B tools\camera_tests\K2_open_gate\m3og.py dump --go --firmware-shown 4.04
+
+## Kit 1 v2: service-mode file check (done: `4.04 CONFIRMED` on the first tester's camera)
 
 **Kit 1 v2 (2026-11-26).** The first run of kit 1 logged in to service mode, then its first file read answered `0x10000004`. The 4.04 firmware explains why. Every service file command mounts the camera's service work area (`/dev/nflasha6` on `/tmp/jiritsu`). Only Sony's own Jiritsu MOUNT command creates that folder, and kit 1 v1 never sent it, because the A7 IV kits it came from do not need it. v2 sends MOUNT before the reads and always sends the matching unmount afterwards. Short tester steps: [K1V2_TEST.md](K1V2_TEST.md). The [public USB file check](PMHOME_TEST.md) has already been done (`control_match`).
 
@@ -93,8 +131,8 @@ Serial numbers are masked in the device listings.
 - Its video codec is the A7 IV's codec family. The codec firmware has a complete 10-bit path, and the camera's encoder tables already contain 10-bit 4:2:2 rows that its menus never use.
 - The sensor's 4K 24p full-width read-out takes about 25 ms. A full-height read-out would fit a 24p frame.
 
-On the first tester's camera, the service-mode login and `READ_HASP` worked (kit 1 v1). The built-in PMHOME volume matches 4.04 (public USB file check). The file reads are what v2 tests.
+On the first tester's camera, the service-mode login and `READ_HASP` worked (kit 1 v1). The built-in PMHOME volume matches 4.04 (public USB file check). Kit 1 v2 confirmed 4.04 and the service file route. Kit 2 is the next step.
 
 ## Licence and third-party code
 
-`windows/tools/third_party/sony-pmca-re` holds the unmodified USB transport files of [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE), pinned by checksum (`PINNED.json`). The `CT1_usb_first_contact` scripts are the A7 IV / A7S III kits' guarded USB layer, copied unchanged (`PROVENANCE.json`). No Sony firmware is included, only sizes and checksums.
+`windows/tools/third_party/sony-pmca-re` holds the unmodified USB transport files of [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE), pinned by checksum (`PINNED.json`). The `CT1_usb_first_contact` scripts are the A7 IV / A7S III kits' guarded USB layer, copied unchanged (`PROVENANCE.json`). No Sony firmware file is included. Kit 1 carries only sizes and checksums. Kit 2's helper (`m3og_design.h`, and the four libraries built from it) carries the 4.04 contents of the three small tables it checks and changes: the sensor register list (5,496 bytes) and two front-end records (1,344 bytes each), plus checksums of three code ranges.

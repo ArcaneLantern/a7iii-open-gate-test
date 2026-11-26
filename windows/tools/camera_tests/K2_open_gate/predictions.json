@@ -1,0 +1,16 @@
+{
+ "kit": "m3kit2_v1",
+ "camera": "ILCE-7M3, firmware 4.04",
+ "written": "2026-11-26, before any kit-2 contact with an A7 III (kit 1 v2 had confirmed 4.04 and the MOUNT -> file route, M3-F032)",
+ "basis": "a7m3_map FINDINGS.md M3-F030..F036, modding/OG_M3_V1.md (static analysis and emulation of the 4.04 update)",
+ "predictions": [
+  {"id": "Q1", "claim": "SET_FILE2 of /tmp/jiritsu/libJit.so answers status 0 and the camera loads the library (the result file exists afterwards). Medium-high: the route is verified statically (M3-F011) and the file route with MOUNT works (M3-F032), but no code has been loaded on an A7 III yet.", "source": "M3-F011, M3-F032"},
+  {"id": "Q2", "claim": "The result is created on /ramdsk (libJiritsu's own RAM disk). If /ramdsk is missing in service mode, it is in /tmp/jiritsu instead; either is read back.", "source": "libJiritsu.so names /ramdsk/jiritsu.dat"},
+  {"id": "Q3", "claim": "euid is 0 (root) and /dev/mem opens.", "source": "libJiritsu.so opens /dev/mem itself; A7 IV F409"},
+  {"id": "Q4", "claim": "The dump's identity lines: the LIRO header at phys 0x035C6000 and the three code ranges all SAME as the 4.04 file, i.e. av-cam runs at physical = link address - 0x60000000. Medium: inferred from the kernel command line (klog 0x035A5000 + 0x20000 is followed by av-cam's base low bits 0x5C6000), the A7S layout of the same family.", "source": "kemco.txt (memrsv=0x1A5E000@0x02E68000, klog.addr=0x035A5000), M3-F005, A7s Claude a7s_poke"},
+  {"id": "Q5", "claim": "On a stock camera after a battery pull the dump says VERDICT READY (stock), and /proc/cmdline equals kemco.txt of the 4.04 update.", "source": "4.04 update"},
+  {"id": "Q6", "claim": "test1 answers DONE (7 bytes in 4 runs) and READY (test 1 applied). In 4K 24p full frame the live view then shows a picture moved by about 312 sensor rows (about 9 percent of the frame height) towards one edge of the sensor: the front end keeps cropping the first 3376 rows of a now 4036-row read. Low-medium for the camera's behaviour: the front end receives 624 more lines per frame than its record expects; a frozen or garbled picture, or a restart, is possible and is itself the answer.", "source": "M3-F033, M3-F035"},
+  {"id": "Q7", "claim": "test2 answers DONE and READY (test 2 applied). In 4K 24p full frame the live view and the clip show the whole 3:2 sensor height squeezed into 16:9 (round things look 1.185 times wider), the file stays 3840x2160. Low: the front end's 65 vertical fields per record were moved by formula, not seen on a camera; focus areas and statistics may sit off.", "source": "M3-F034, M3-F036"},
+  {"id": "Q8", "claim": "putback answers DONE and READY (stock); a battery pull also restores 4.04 (the warm-boot image reloads av-cam). The power switch alone may NOT reset RAM (A7S family: it is a suspend).", "source": "A7s Claude A7S-F15/F16, JOURNAL OG2 run"}
+ ]
+}
