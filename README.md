@@ -1,6 +1,29 @@
 # A7 III open-gate test kits (firmware 4.04)
 
-## Kit 2 v11 (2026-11-27): open-gate tests and debug dump
+## Kit 2 v12 (2026-11-27): open-gate tests and debug dump
+
+**v12, after the v11 run.** Test 11 (the lines sent 2.7 % faster) recorded the same frame as test 9: picture to row 2119, noise below. So the line period was not the cause, and the time budget given for v11 is withdrawn. It was a coincidence of two numbers, one of them from a row-to-line conversion that was off by nine lines.
+
+The dump's copy of the camera's own log worked this time, and the log names the cause. With a test applied the firmware writes, for every frame:
+
+1. error interrupts in the camera core (`camIntHandler1: fact=100000`), none of which appear in the stock log;
+2. `Lost CAMOUT_V … sgc2[hq:0x05f7 vq:0x0d6a]`: the camera core gives the frame up at line 3434;
+3. `Ofmt_Mwrap::Deactivate() status wait failed !!!`: the front end's output stage cannot close its memory reader;
+4. `S-Ele Refresh!`: the retry that shows as stutter.
+
+Its status print shows the front end's output-format generator resting at line 3437 while the transfer generator still runs. 3437 is the line count of the front end's three frame-memory port entries (two write ports, one read port). Tests 9 to 11 raised every other count in the front end to 3529 and left these three stock, because it was not known whether movie mode uses them. The log shows the ports started and running.
+
+| Step | What it changes |
+| --- | --- |
+| test 12 | test 11 plus the three port entries at 3529 lines |
+| test 13 | test 9 plus the same three entries (the stock line period on a 59.94 camera; on a PAL camera the same bytes as test 12) |
+
+- The memory behind the ports is block 0x324 of the camera core's memory manager. The settings file gives it 0x1800000 bytes, which is 4139 lines of 6080 bytes; 3529 lines need 21.5 MB of the 25.2 MB. If that were wrong the firmware would log `DfeCamAif… memSize…<rawSize…`, and the dump would show it.
+- **Still open:** fine red-blue row stripes in every test clip since test 3.
+
+**Tester steps: [K2_TEST.md](K2_TEST.md).**
+
+### Kit 2 v11 (2026-11-27): the line period (withdrawn)
 
 **v11, after the v10 run.** Test 9 removed the black bar and the strip under it in every frame. So the front end's stock frame was what caused them.
 
@@ -132,7 +155,7 @@ The firmware shows a likely cause. Test 2 made the front-end records 624 lines t
 
 **Tester steps: [K2_TEST.md](K2_TEST.md).** Everything is changed only in the camera's working memory (RAM). The put-back step, a restart, or a battery pull undoes it.
 
-Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built sixteen times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
+Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built eighteen times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
 
 | Step | Launcher | Picture rows | Squeeze | Line period (59.94 / 50 system) | Line rate above stock |
 | --- | --- | --- | --- | --- | --- |
@@ -167,7 +190,7 @@ The test design (`og_m3_v2`) comes from the 4.04 firmware:
 - The front-end record of the 4K full-frame mode holds 65 height fields and the vertical scaler step.
 - The camera core's drive table holds the cycle pair. In every movie and live-view mode that has one, its line count covers the whole sensor frame and the pair fits inside the frame time. The new line periods leave the gap the 50 system leaves in stock.
 - The firmware's own code, run in an emulator, programs the new window and builds the drive table from the new pair. The one extra byte it changes is written too.
-- The sixteen helper builds were run in an emulator against the 4.04 memory image: 220 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, the two switch steps (one bit each, other bits kept, cleared by put back), and a full application log staying under the RAM disk's size.
+- The eighteen helper builds were run in an emulator against the 4.04 memory image: 258 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, the two switch steps (one bit each, other bits kept, cleared by put back), and a full application log staying under the RAM disk's size.
 
 What is not known: whether the pair is the only thing the camera core needs, and whether the front end keeps up with the shorter line period. If a test restarts the camera, the dump taken right after now includes the application log, where the firmware writes which check gave up.
 

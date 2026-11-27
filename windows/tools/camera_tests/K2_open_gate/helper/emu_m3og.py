@@ -28,7 +28,7 @@ ROOT = HERE.parents[2]
 AVCAM = ROOT / 'work' / 'extracted' / 'a7m3_404' / '0700_part_image' / 'dev' / 'nflasha3' / 'av-cam.bin'
 KEMCO = ROOT / 'work' / 'extracted' / 'a7m3_404' / 'update' / '0800_appli' / 'setting' / 'kemco.txt'
 DESIGN = ROOT / 'modding' / 'designs' / 'og_m3_v2.json'
-LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'putback', 'norestart', 'nocheck', 'dfelog')}
+LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'test12', 'test13', 'putback', 'norestart', 'nocheck', 'dfelog')}
 
 BASE, STACK, STACK_SZ, RET = 0x10000000, 0x7E000000, 0x100000, 0x7F000000
 AV_PHYS, AV_END, KLOG_PHYS, KLOG_LEN = 0x035C6000, 0x048C6000, 0x035A5000, 0x20000
@@ -347,7 +347,7 @@ def main():
     check(not r.bad, 'dump: runs to the end (%s)' % (r.bad or 'ok'))
     check('VERDICT READY (stock)' in t and t.count('SAME as the 4.04 file') == 3 and t.count('  matches 4.04') == 16,
           'dump: LIRO header + 2 code ranges SAME, 16 image pages reported, verdict READY (stock)')
-    check(N_BLK == 20 and 'tv system 59.94 (slot 28)' in t and t.count('  STOCK\n') == N_BLK, 'dump: TV system 59.94 found, %d blocks STOCK' % N_BLK)
+    check(N_BLK == 23 and 'tv system 59.94 (slot 28)' in t and t.count('  STOCK\n') == N_BLK, 'dump: TV system 59.94 found, %d blocks STOCK' % N_BLK)
     check(not cam.writes and diff(cam.mem) == [], 'dump: memory untouched, no pwrite')
     check('0123456789abcdef' not in t and 'not copied by m3og' in t, 'dump: the cpuinfo Serial line is not copied')
     check('12:34:56:ab:cd:ef' not in t and 'xx:xx:xx:xx:xx:xx' in t and 'liro: resume (WBI)' in t, 'dump: kernel log copied as text, MAC address blanked')
@@ -416,7 +416,7 @@ def main():
     # 3. test 2 on top of test 1; then tests 2, 3, 4 on stock
     r, t = run('test2', cam_from(mem['test1']))
     check(not r.bad and 'DONE: ' in t and 'READY (test 2 applied)' in t, 'test2 after test1: DONE, READY (test 2 applied)')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11')):
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11'), (12, 'test12'), (13, 'test13')):
         cam = Camera()
         r, t = run(name, cam)
         dn = diff(cam.mem)
@@ -473,17 +473,32 @@ def main():
           'test11 on a 50-system camera: the same bytes as test9 there (pair 801 / 1764), and the step names itself')
     r, t = run('dump', cam_from(pal_t9, system='50'))
     check('VERDICT READY (test 9 applied)' in t, 'dump after test11 on a 50-system camera: says test 9 (the same bytes)')
+    cam = cam_from(pal_stock, system='50')
+    r, t = run('test12', cam)
+    pal_t12 = bytes(cam.mem)
+    ports = [b for b in fe['blocks'] if b['name'].startswith('dfe_port')]
+    check(not r.bad and 'READY (test 12 applied)' in t.split('after:')[-1] and len(ports) == 3
+          and all(struct.unpack_from('<H', cam.mem, P(b['va']) + 8)[0] == 3529 for b in ports)
+          and [o for o in diff(cam.mem, pal_t9)] == sorted(P(b['va']) + 8 for b in ports),
+          'test12 on a 50-system camera: test9 there plus the three port entries at 3529 lines')
+    cam = cam_from(pal_stock, system='50')
+    r, t = run('test13', cam)
+    check(not r.bad and bytes(cam.mem) == pal_t12 and 'READY (test 13 applied)' in t.split('after:')[-1],
+          'test13 on a 50-system camera: the same bytes as test12 there, and the step names itself')
+    cam = cam_from(pal_t12, system='50')
+    r, t = run('putback', cam)
+    check('READY (stock)' in t and bytes(cam.mem) == pal_stock, 'putback after test12 on the 50-system camera: memory as before')
     cam = cam_from(pal_t9, system='50')
     r, t = run('putback', cam)
     check('READY (stock)' in t and bytes(cam.mem) == pal_stock, 'putback after test9 on the 50-system camera: memory as before')
     # 4. one test over another refuses
-    for over, under in (('test1', 'test2'), ('test3', 'test2'), ('test2', 'test4'), ('test4', 'test3'), ('test4', 'test5'), ('test3', 'test5'), ('test6', 'test3'), ('test3', 'test6'), ('test5', 'test6'), ('test7', 'test3'), ('test8', 'test7'), ('test3', 'test8'), ('test3', 'test9'), ('test9', 'test10'), ('test8', 'test9'), ('test9', 'test4'), ('test9', 'test11'), ('test3', 'test11'), ('test11', 'test10')):
+    for over, under in (('test1', 'test2'), ('test3', 'test2'), ('test2', 'test4'), ('test4', 'test3'), ('test4', 'test5'), ('test3', 'test5'), ('test6', 'test3'), ('test3', 'test6'), ('test5', 'test6'), ('test7', 'test3'), ('test8', 'test7'), ('test3', 'test8'), ('test3', 'test9'), ('test9', 'test10'), ('test8', 'test9'), ('test9', 'test4'), ('test9', 'test11'), ('test3', 'test11'), ('test11', 'test10'), ('test11', 'test12'), ('test13', 'test11'), ('test9', 'test13'), ('test13', 'test12'), ('test12', 'test10')):
         cam = cam_from(mem[under])
         r, t = run(over, cam)
         check(not r.bad and 'run the put-back first' in t and not cam.writes and bytes(cam.mem) == mem[under],
               '%s over %s: NOT DONE, nothing written' % (over, under))
     # 5. put back
-    for name in ('test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11'):
+    for name in ('test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'test12', 'test13'):
         cam = cam_from(mem[name])
         r, t = run('putback', cam)
         check(not r.bad and 'DONE: ' in t and 'READY (stock)' in t and bytes(cam.mem) == bytes(stock), 'putback after %s: memory equals 4.04 again' % name)
@@ -520,6 +535,21 @@ def main():
           'test11 = test9 with the line period 814 (pair 814 / 1764, transfer 813 / 3528): the largest that keeps the stock end time; the 50 system is unchanged')
     d911 = diff(cam_from(mem['test11']).mem, mem['test9'])
     check(len(d911) == 4, 'test11 differs from test9 in %d bytes on a 59.94 camera (the pair in two places, the byte derived from it, the transfer list)' % len(d911))
+    for over, under in (('test12', 'test11'), ('test12', 'test9'), ('test12', 'test3'), ('test12', 'test13'), ('test13', 'test9'), ('test13', 'test3')):
+        cam = cam_from(mem[under])
+        r, t = run(over, cam)
+        n_over = int(over[4:])
+        check(not r.bad and 'DONE: ' in t and ('READY (test %d applied)' % n_over) in t and bytes(cam.mem) == mem[over],
+              '%s after %s: DONE, READY (test %d applied)' % (over, under, n_over))
+    port_ch = lambda name: [c for c in steps[name]['front_end'] if c['block'].startswith('dfe_port')]   # noqa: E731
+    rest = lambda name: [c for c in steps[name]['front_end'] if not c['block'].startswith('dfe_port')]   # noqa: E731
+    check(rest('test12') == steps['test11']['front_end'] and rest('test13') == steps['test9']['front_end']
+          and steps['test12']['timing'] == steps['test11']['timing'] and steps['test13']['timing'] == steps['test9']['timing']
+          and port_ch('test12') == port_ch('test13') and [(c['stock'], c['new'], c['size']) for c in port_ch('test12')] == [(3437, 3529, 2)] * 3
+          and not port_ch('test11') and not port_ch('test9') and 6080 * 3529 <= 0x1800000,
+          'test12 = test11 + the three port entries at 3529 lines; test13 = test9 + the same; 6080 x 3529 bytes fit the 0x1800000 block')
+    d1112 = diff(cam_from(mem['test12']).mem, mem['test11'])
+    check(len(d1112) == 3, 'test12 differs from test11 in %d bytes (one per port entry)' % len(d1112))
     t3, t9 = steps['test3'], steps['test9']
     regs9 = [c for c in t9['front_end'] if c.get('system', '59.94') == '59.94']
     check(t9['sensor_sites'] == t3['sensor_sites'] and t9['records'] == t3['records'] and t9['timing'] == t3['timing'] and len(regs9) == 45
@@ -540,7 +570,7 @@ def main():
           and steps['test8']['rows'] == 3596 and steps['test8']['first_row'] == 327 and steps['test8']['timing'] == steps['test3']['timing']
           and steps['test8']['records'] == steps['test3']['records'],
           'test7 = test3 with the pair 815 / 1810; test8 = test3 with 3596 sensor rows; nothing else differs')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11')):
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11'), (12, 'test12'), (13, 'test13')):
         r, t = run('dump', cam_from(mem[name]))
         check(('VERDICT READY (test %d applied)' % n) in t, 'dump after %s: READY (test %d applied)' % (name, n))
     # 5b. the second camera run's state (v2 test 2: sensor + records, timing pair still stock) is reported as partly applied
