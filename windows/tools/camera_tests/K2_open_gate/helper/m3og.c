@@ -4,7 +4,7 @@
  * How it runs: the kit writes this file to /tmp/jiritsu/libJit.so with the service file-write command; libJiritsu.so's
  * adj_cmd_set_file2 then loads it with dlopen (a7m3_map M3-F011), which runs the constructor below once inside the
  * service process; the firmware calls dlclose and the kit deletes the file again. The kit sends Jiritsu MOUNT first
- * (M3-F030). Built eight times, one level each (build_m3og.sh):
+ * (M3-F030). Built once per level (build_m3og.sh):
  *
  *   level 1   DUMP, read-only. /proc and /sys facts, the kernel log, where av-cam sits in memory (checked against the 4.04
  *             file), what each block of the design holds now, copies of the sensor and front-end tables, and (v3)
@@ -27,13 +27,26 @@
  *             shortens to 815 / 781 to keep the blank). Whole frame if a stale stock count is added to ours.
  *   level 27  TEST 8 (v9). Test 3 with the sensor's row-count register raised by twice as much (3596 rows from row 327).
  *             Whole frame if a second sensor row count stays stock (M3-F049).
- *   level 31  PUT BACK. Writes the 4.04 bytes back wherever a test changed them, and clears the two switch bits below.
+ *   level 28  TEST 9 (v10). Test 3 plus the front end's own register lists for the 4K full-frame drives (M3-F051): every
+ *             line count + 92 in the receiver, link, image, output-format and transfer generators of both channels,
+ *             the two frame totals derived from them, and the transfer generator's cycle. No earlier test wrote them.
+ *   level 29  TEST 10 (v10). Test 9 plus the front end's drive table: its twelve height words + 92.
+ *             Tests 9 and 10 also set the no-restart bit (level 41) and the status-print bits (level 43) themselves.
+ *   level 31  PUT BACK. Writes the 4.04 bytes back wherever a test changed them, and clears the switch bits below.
  *   level 41  NO RESTART (v4). Sets bit 0x40 of the firmware's own switch byte for its output-sync refresh loop: the loop
  *             keeps retrying but never forces the restart. One byte.
  *   level 42  NO CHECK (v4). Sets bit 0x02 of the same byte: the refresh loop does nothing at all. One byte.
  *             With tests 2 to 4 of v3 the picture came up, then the loop retried ten times and forced a restart
  *             (M3-F042). These two steps show how often it retries (the dump reads its counters) and whether the
  *             picture is good without it.
+ *   level 43  FRONT-END LOG (v10). Sets four bits of one flag byte: the firmware's own status print for its front end
+ *             (FUN_637a35bc) then writes the generators' cycles, counters and states to the camera's log each time the
+ *             sensor's drive mode changes. The dump copies that log (below). One byte; put back clears it.
+ *
+ * v10, dump: the camera core's own log lines. av-cam's print function sends each line to the kernel's log module, which
+ * keeps them in RAM (log buffer at 0x03085000, laid out from /setting/ulogio.bin): subsystem 3, area 1 = the latest
+ * 8 KB, area 3 = the first 40 KB since the camera started. Both are copied as text if their headers are where the
+ * layout says (M3-F054).
  *
  * Memory: av-cam.bin runs from RAM at physical = link address - 0x60000000 (kernel command line: klog at 0x035A5000,
  * size 0x20000; av-cam's LIRO image follows at 0x035C6000; the reservation 0x02E68000 + 0x1A5E000 ends where av-cam's
@@ -44,8 +57,8 @@
  * v2: the first 64 KB of the image change while the camera runs. They are reported page by page and no longer required
  * (v1 required them and refused on every camera).
  *
- * A write level writes only bytes of its six blocks (the register list, two front-end records, and three small
- * timing blocks in the slot of the camera's TV system: ROM pair, runtime pair, one derived byte), only where the
+ * A write level writes only bytes of its blocks (the register list, the two records, the front end's lists and drive
+ * table, and the small timing and size blocks in the slot of the camera's TV system), only where the
  * 4.04 values and the target differ, only if every byte of every block holds the 4.04 byte or the target byte. Each
  * run of bytes is read back; on any mismatch every byte written is put back. A restart undoes everything: av-cam is
  * loaded again from the warm-boot image (seen after the forced restart of the second run, and after a battery pull).
@@ -63,26 +76,33 @@ typedef unsigned long long u64;
 #ifndef LEVEL
 #define LEVEL 1
 #endif
-#if LEVEL != 1 && LEVEL != 11 && LEVEL != 21 && LEVEL != 22 && LEVEL != 23 && LEVEL != 24 && LEVEL != 25 && LEVEL != 26 && LEVEL != 27 && LEVEL != 31 && LEVEL != 41 && LEVEL != 42
-#error "LEVEL must be 1, 11, 21, 22, 23, 24, 25, 26, 27, 31, 41 or 42"
+#if LEVEL != 1 && LEVEL != 11 && !(LEVEL >= 21 && LEVEL <= 29) && LEVEL != 31 && LEVEL != 41 && LEVEL != 42 && LEVEL != 43
+#error "LEVEL must be 1, 11, 21 to 29, 31, 41, 42 or 43"
 #endif
-#define GUARD_ONLY (LEVEL == 41 || LEVEL == 42)
+#define GUARD_ONLY (LEVEL == 41 || LEVEL == 42 || LEVEL == 43)
+/* v10: tests 9 and 10 also set the no-restart bit and the status-print bits themselves (one session instead of three) */
+#define TEST_SETS_FLAGS (LEVEL == 28 || LEVEL == 29)
+/* the test a level writes: test1 = 0, test2..test10 = 1..9 */
+#if LEVEL == 11
+#define TEST_IDX 0
+#elif LEVEL >= 21 && LEVEL <= 29
+#define TEST_IDX (LEVEL - 20)
+#endif
 #define WRITES (LEVEL != 1)
 
 struct ident { const char *name; u32 va; u32 len; u8 sha[32]; };
 /* patch[n]: the bytes of test n+1 that differ from stock, npatch[n] triplets {offset low, offset high, value} */
-struct block { const char *name; u32 va; u32 len; const u8 *stock; const u8 *patch[8]; u16 npatch[8]; };
+struct block { const char *name; u32 va; u32 len; const u8 *stock; const u8 *patch[10]; u16 npatch[10]; };
 struct range { const char *name; u32 va; u32 len; };
 #include "m3og_design.h"
 
-#define VERSION "m3og_v9"
+#define VERSION "m3og_v10"
 #define KLOG_PHYS 0x035A5000u
 #define KLOG_LEN 0x20000u
 #define ALOG_PHYS 0x03524FC0u            /* kernel command line: alog.addr=0x03524FC0 alog.size=0x60040 */
 #define ALOG_LEN 0x60040u
 #define RESULT_CAP (900u * 1024u)        /* /tmp_network is a 1024 KB tmpfs: the log copies stop here */
 #define FILE_CAP (64 * 1024)
-#define MAXB 5496
 
 /* ------------------------------------------------------------------ system calls (ARM EABI, ARM state) */
 
@@ -183,6 +203,13 @@ static void phex(u32 v, int digits)
     put(b, 2 + digits);
 }
 static void px(u32 v) { phex(v, 8); }
+static void pdec(u32 v)
+{
+    char b[10];
+    int n = 0;
+    do { b[n++] = (char)('0' + v % 10); v /= 10; } while (v);
+    while (n) put(&b[--n], 1);
+}
 static void pbytes(const u8 *b, u32 n)
 {
     char t[2];
@@ -403,20 +430,32 @@ static int identity(int *loc)
 static const struct block *B[N_BLOCKS];
 static int n_blk;
 static int tv_sys = -1;
-static u8 cur[N_BLOCKS][MAXB];
-static u8 tgt[N_STEPS][N_BLOCKS][MAXB];  /* the full bytes of each test, built from stock + patch when a block is taken */
+/* v10: the blocks' bytes sit one after another in a row of POOL_STEP bytes: one row for what the camera holds now and
+ * one per test for its full bytes (built from stock + patch when a block is taken). */
+static u32 boff[N_BLOCKS];
+static u32 pool_used;
+static u8 cur_pool[POOL_STEP];
+static u8 tgt_pool[N_STEPS][POOL_STEP];
+#define CUR(i) (cur_pool + boff[i])
+#define TGT(n, i) (tgt_pool[n] + boff[i])
 static u16 eq[N_BLOCKS];                /* bit 0: every byte is the stock byte; bit n: every byte is test n's byte */
-enum { ST_STOCK, ST_T1, ST_T2, ST_T3, ST_T4, ST_T5, ST_T6, ST_T7, ST_T8, ST_MIXED, ST_OTHER, ST_UNREAD };
-static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "TEST3", "TEST4", "TEST5", "TEST6", "TEST7", "TEST8", "MIXED", "OTHER", "NOT READ"};
+#if N_STEPS != 10
+#error "the state names below are for ten tests"
+#endif
+enum { ST_STOCK, ST_T1, ST_MIXED = ST_T1 + N_STEPS, ST_OTHER, ST_UNREAD };
+static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "TEST3", "TEST4", "TEST5", "TEST6", "TEST7", "TEST8", "TEST9", "TEST10",
+                                         "MIXED", "OTHER", "NOT READ"};
 
 static void take_block(int i, const struct block *b)
 {
     B[i] = b;
+    boff[i] = pool_used;
+    pool_used += b->len;                 /* the design's POOL_STEP is the sum of one system's block lengths */
     for (int n = 0; n < N_STEPS; n++) {
-        memcpy(tgt[n][i], b->stock, b->len);
+        memcpy(TGT(n, i), b->stock, b->len);
         for (u32 k = 0; k < b->npatch[n]; k++) {
             const u8 *p = b->patch[n] + 3 * k;
-            tgt[n][i][p[0] | (u32)p[1] << 8] = p[2];
+            TGT(n, i)[p[0] | (u32)p[1] << 8] = p[2];
         }
     }
 }
@@ -448,11 +487,11 @@ static int block_state(int i)
     u32 ds = 0, d[N_STEPS], other = 0;
     for (int n = 0; n < N_STEPS; n++) d[n] = 0;
     for (u32 k = 0; k < b->len; k++) {
-        u8 c = cur[i][k];
+        u8 c = CUR(i)[k];
         int known = c == b->stock[k];
         if (!known) ds++;
         for (int n = 0; n < N_STEPS; n++) {
-            if (c != tgt[n][i][k]) d[n]++; else known = 1;
+            if (c != TGT(n, i)[k]) d[n]++; else known = 1;
         }
         if (!known) other++;
     }
@@ -463,14 +502,14 @@ static int block_state(int i)
     else if (st == ST_MIXED && other) st = ST_OTHER;
     ps("block "); ps(b->name); ps(" va "); px(b->va); ps(" len "); phex(b->len, 4);
     ps(" differs from stock "); phex(ds, 4);
-    for (int n = 0; n < N_STEPS; n++) { ps(" from test"); phex((u32)n + 1, 1); ps(" "); phex(d[n], 4); }
+    for (int n = 0; n < N_STEPS; n++) { ps(" from test"); pdec((u32)n + 1); ps(" "); phex(d[n], 4); }
     ps("  "); ps(STATE_NAME[st]); nl();
     if (other) {
         u32 shown = 0;
         for (u32 k = 0; k < b->len && shown < 16; k++) {
-            u8 c = cur[i][k];
+            u8 c = CUR(i)[k];
             int known = c == b->stock[k];
-            for (int n = 0; n < N_STEPS; n++) known = known || c == tgt[n][i][k];
+            for (int n = 0; n < N_STEPS; n++) known = known || c == TGT(n, i)[k];
             if (!known) {
                 ps("  other at "); px(b->va + k); ps(" now "); phex(c, 2); ps(" stock "); phex(b->stock[k], 2); nl();
                 shown++;
@@ -486,7 +525,7 @@ static int read_blocks(int st[N_BLOCKS])
     ps("== blocks\n");
     for (int i = 0; i < N_BLOCKS; i++) { st[i] = ST_UNREAD; eq[i] = 0; }
     for (int i = 0; i < n_blk; i++) {
-        if (!mem_rd(B[i]->va - PHYS_DELTA, cur[i], B[i]->len)) {
+        if (!mem_rd(B[i]->va - PHYS_DELTA, CUR(i), B[i]->len)) {
             ps("block "); ps(B[i]->name); ps("  READ FAILED\n");
             ok = 0; continue;
         }
@@ -500,18 +539,12 @@ static void verdict(int idok, const int st[N_BLOCKS])
     ps("VERDICT ");
     if (!idok) { ps("NOT READY (av-cam is not where or what the 4.04 file says)\n"); return; }
     if (n_blk != N_BLOCKS) { ps("NOT READY (the TV system slot of the 4K drive was not recognised)\n"); return; }
-    u32 all = 0x1ff;
+    u32 all = (2u << N_STEPS) - 1;
     for (int i = 0; i < N_BLOCKS; i++) all &= st[i] == ST_UNREAD ? 0 : eq[i];
-    if (all & 1) ps("READY (stock)\n");
-    else if (all & 2) ps("READY (test 1 applied)\n");
-    else if (all & 4) ps("READY (test 2 applied)\n");
-    else if (all & 8) ps("READY (test 3 applied)\n");
-    else if (all & 16) ps("READY (test 4 applied)\n");
-    else if (all & 32) ps("READY (test 5 applied)\n");
-    else if (all & 64) ps("READY (test 6 applied)\n");
-    else if (all & 128) ps("READY (test 7 applied)\n");
-    else if (all & 256) ps("READY (test 8 applied)\n");
-    else ps("NOT READY (the design's bytes are partly applied or changed by something else)\n");
+    if (all & 1) { ps("READY (stock)\n"); return; }
+    for (int n = 0; n < N_STEPS; n++)
+        if (all & (2u << n)) { ps("READY (test "); pdec((u32)n + 1); ps(" applied)\n"); return; }
+    ps("NOT READY (the design's bytes are partly applied or changed by something else)\n");
 }
 
 /* v4: the firmware's own switches for its output-sync refresh loop. FUN_63935730 reads this byte every frame:
@@ -524,19 +557,25 @@ static void guard_show(void)
     ps("flag byte "); phex(g, 2);
     ps((g & GUARD_OFF) ? "  refresh loop OFF" : (g & GUARD_NOFORCE) ? "  refresh loop on, NO FORCED RESTART" : "  refresh loop STOCK");
     nl();
+    /* v10: the flag byte of the firmware's front-end status print */
+    ps("DFELOG ");
+    if (!mem_rd(DFELOG_VA - PHYS_DELTA, &g, 1)) { ps("NOT READ\n"); return; }
+    ps("flag byte "); phex(g, 2);
+    ps((g & DFELOG_BITS) == DFELOG_BITS ? "  front-end status print ON" : (g & DFELOG_BITS) ? "  front-end status print PARTLY ON" : "  front-end status print off");
+    nl();
 }
 
-#if LEVEL == 31 || GUARD_ONLY
-/* sets and clears bits of the switch byte, leaving its other bits alone. Returns 1 if a byte was written and read
+#if LEVEL == 31 || GUARD_ONLY || TEST_SETS_FLAGS
+/* sets and clears bits of one flag byte, leaving its other bits alone. Returns 1 if a byte was written and read
  * back, 0 if nothing had to change, 0xffffffff on a failure (the old byte is written back). */
-static u32 guard_write(u8 set, u8 clear)
+static u32 flag_write(u32 va, u8 set, u8 clear)
 {
     u8 g, w, back;
-    if (!mem_rd(GUARD_VA - PHYS_DELTA, &g, 1)) return 0xffffffffu;
+    if (!mem_rd(va - PHYS_DELTA, &g, 1)) return 0xffffffffu;
     w = (u8)((g | set) & (u8)~clear);
     if (w == g) return 0;
-    if (!mem_wr(GUARD_VA - PHYS_DELTA, &w, 1) || !mem_rd(GUARD_VA - PHYS_DELTA, &back, 1) || back != w) {
-        mem_wr(GUARD_VA - PHYS_DELTA, &g, 1);
+    if (!mem_wr(va - PHYS_DELTA, &w, 1) || !mem_rd(va - PHYS_DELTA, &back, 1) || back != w) {
+        mem_wr(va - PHYS_DELTA, &g, 1);
         return 0xffffffffu;
     }
     return 1;
@@ -589,6 +628,34 @@ static void dump_log(const char *name, u32 phys, u32 len, int squeeze)
     }
     ps(cut ? "\n== cut (result size limit)\n" : "\n== end\n");
 }
+
+static u32 le32(const u8 *p) { return p[0] | (u32)p[1] << 8 | (u32)p[2] << 16 | (u32)p[3] << 24; }
+
+/* v10: one area of the camera core's log (see the top of this file). The log module's area header is 0x24 bytes and
+ * holds the data size at +8 and the data size - 1 at +12 (osal_ulogio.ko, ulogio_lbm_init); the area is copied as text
+ * only if both are what the layout says. */
+static void dump_camlog(const char *name, u32 phys, u32 size)
+{
+    u8 h[0x24];
+    ps("camlog area "); ps(name); ps(" phys "); px(phys); ps(" size "); px(size);
+    if (!mem_rd(phys, h, sizeof h)) { ps("  HEADER NOT READ\n"); return; }
+    ps(" header "); pbytes(h, sizeof h);
+    if (le32(h + 8) != size - 0x24 || le32(h + 12) != size - 0x25) { ps("  NOT AS EXPECTED, not copied\n"); return; }
+    ps("  as expected\n");
+    dump_log(name, phys + 0x24, size - 0x24, 1);
+}
+
+static void dump_camlogs(void)
+{
+    u8 h[12];
+    ps("== camlog\n");
+    ps("camlog subsystem phys "); px(ULOG_SUB_PHYS);
+    if (!mem_rd(ULOG_SUB_PHYS, h, sizeof h)) { ps("  NOT READ\n"); return; }
+    ps(" header "); pbytes(h, sizeof h);
+    ps(le32(h + 4) == 3 && le32(h + 8) == ULOG_SUB_TOTAL ? "  as expected\n" : "  NOT AS EXPECTED\n");
+    dump_camlog("camlog_first", CAMLOG_FIRST_PHYS, CAMLOG_FIRST_SIZE);
+    dump_camlog("camlog_last", CAMLOG_LAST_PHYS, CAMLOG_LAST_SIZE);
+}
 #endif
 
 #if GUARD_ONLY
@@ -597,7 +664,11 @@ static void write_level(int idok, const int st[N_BLOCKS])
     (void)st;
     ps("== write level "); phex(LEVEL, 2); nl();
     if (!idok) { ps("NOT DONE: av-cam identity not confirmed; nothing is written\n"); return; }
-    u32 w = guard_write(LEVEL == 41 ? GUARD_NOFORCE : GUARD_OFF, 0);
+#if LEVEL == 43
+    u32 w = flag_write(DFELOG_VA, DFELOG_BITS, 0);
+#else
+    u32 w = flag_write(GUARD_VA, LEVEL == 41 ? GUARD_NOFORCE : GUARD_OFF, 0);
+#endif
     if (w == 0xffffffffu) ps("NOT DONE: the switch byte could not be written; it was put back\n");
     else if (!w) ps("NOTHING TO DO: the switch bit is already set\n");
     else ps("DONE: 0x00000001 bytes written in 0x00000001 runs, each read back\n");
@@ -606,29 +677,15 @@ static void write_level(int idok, const int st[N_BLOCKS])
 /* the target of this level for block i */
 static const u8 *target(int i)
 {
-#if LEVEL == 11
-    return tgt[0][i];
-#elif LEVEL == 21
-    return tgt[1][i];
-#elif LEVEL == 22
-    return tgt[2][i];
-#elif LEVEL == 23
-    return tgt[3][i];
-#elif LEVEL == 24
-    return tgt[4][i];
-#elif LEVEL == 25
-    return tgt[5][i];
-#elif LEVEL == 26
-    return tgt[6][i];
-#elif LEVEL == 27
-    return tgt[7][i];
+#ifdef TEST_IDX
+    return TGT(TEST_IDX, i);
 #else
     return B[i]->stock;
 #endif
 }
 
 struct run { int blk; u32 off; u32 len; };
-static struct run done_runs[256];
+static struct run done_runs[512];
 static int n_done;
 
 static void undo(void)
@@ -637,8 +694,8 @@ static void undo(void)
     for (int r = n_done - 1; r >= 0; r--) {
         struct run *w = &done_runs[r];
         u8 back[64];
-        if (!mem_wr(B[w->blk]->va - PHYS_DELTA + w->off, cur[w->blk] + w->off, w->len) ||
-            !mem_rd(B[w->blk]->va - PHYS_DELTA + w->off, back, w->len) || !same(back, cur[w->blk] + w->off, w->len))
+        if (!mem_wr(B[w->blk]->va - PHYS_DELTA + w->off, CUR(w->blk) + w->off, w->len) ||
+            !mem_rd(B[w->blk]->va - PHYS_DELTA + w->off, back, w->len) || !same(back, CUR(w->blk) + w->off, w->len))
             bad = 1;
     }
     ps(bad ? "!! UNDO INCOMPLETE: battery out for ten seconds now\n" : "everything written was put back\n");
@@ -652,9 +709,12 @@ static void write_level(int idok, const int st[N_BLOCKS])
 #if LEVEL == 31
     /* put back clears the refresh loop's two switch bits first, whatever the blocks hold */
     {
-        u32 w = guard_write(0, GUARD_OFF | GUARD_NOFORCE);
+        u32 w = flag_write(GUARD_VA, 0, GUARD_OFF | GUARD_NOFORCE);
         if (w == 0xffffffffu) { ps("NOT DONE: the refresh loop's switch byte could not be cleared\n"); return; }
         if (w) { ps("guard: switch bits cleared, 1 byte written and read back\n"); total = 1; extra_runs = 1; }
+        w = flag_write(DFELOG_VA, 0, DFELOG_BITS);
+        if (w == 0xffffffffu) { ps("NOT DONE: the front-end status print's flag byte could not be cleared\n"); return; }
+        if (w) { ps("dfelog: status print bits cleared, 1 byte written and read back\n"); total++; extra_runs++; }
     }
 #endif
     if (n_blk != N_BLOCKS) { ps("NOT DONE: the TV system slot of the 4K drive was not recognised; nothing is written\n"); return; }
@@ -663,9 +723,9 @@ static void write_level(int idok, const int st[N_BLOCKS])
         if (st[i] == ST_UNREAD) { ps("NOT DONE: a block could not be read; nothing is written\n"); return; }
         const u8 *t = target(i);
         for (u32 k = 0; k < B[i]->len; k++) {
-            u8 c = cur[i][k];
+            u8 c = CUR(i)[k];
             int fine = c == B[i]->stock[k] || c == t[k], test_byte = 0;
-            for (int n = 0; n < N_STEPS; n++) test_byte = test_byte || c == tgt[n][i][k];
+            for (int n = 0; n < N_STEPS; n++) test_byte = test_byte || c == TGT(n, i)[k];
 #if LEVEL == 31
             fine = fine || test_byte;
 #endif
@@ -681,9 +741,9 @@ static void write_level(int idok, const int st[N_BLOCKS])
         const u8 *t = target(i);
         u32 k = 0;
         while (k < B[i]->len) {
-            if (cur[i][k] == t[k]) { k++; continue; }
+            if (CUR(i)[k] == t[k]) { k++; continue; }
             u32 s = k;
-            while (k < B[i]->len && cur[i][k] != t[k] && k - s < 64) k++;
+            while (k < B[i]->len && CUR(i)[k] != t[k] && k - s < 64) k++;
             u8 back[64];
             u32 n = k - s;
             if (n_done >= (int)(sizeof done_runs / sizeof done_runs[0])) { ps("NOT DONE: too many runs\n"); undo(); return; }
@@ -697,6 +757,21 @@ static void write_level(int idok, const int st[N_BLOCKS])
             total += n;
         }
     }
+#if TEST_SETS_FLAGS
+    {
+        u32 w = flag_write(GUARD_VA, GUARD_NOFORCE, 0);
+        if (w == 0xffffffffu) { ps("NOT DONE: the no-restart bit could not be set; putting back\n"); undo(); return; }
+        if (w) { ps("guard: no-restart bit set, 1 byte written and read back\n"); total++; extra_runs++; }
+        u32 w2 = flag_write(DFELOG_VA, DFELOG_BITS, 0);
+        if (w2 == 0xffffffffu) {
+            ps("NOT DONE: the status-print bits could not be set; putting back\n");
+            if (w) flag_write(GUARD_VA, 0, GUARD_NOFORCE);
+            undo();
+            return;
+        }
+        if (w2) { ps("dfelog: status print bits set, 1 byte written and read back\n"); total++; extra_runs++; }
+    }
+#endif
     if (!total) { ps("NOTHING TO DO: every byte already holds the target\n"); return; }
     ps("DONE: "); px(total); ps(" bytes written in "); px((u32)n_done + extra_runs); ps(" runs, each read back\n");
 }
@@ -723,10 +798,16 @@ static const char *const LEVEL_NAME =
     "test7";
 #elif LEVEL == 27
     "test8";
+#elif LEVEL == 28
+    "test9";
+#elif LEVEL == 29
+    "test10";
 #elif LEVEL == 41
     "norestart";
 #elif LEVEL == 42
     "nocheck";
+#elif LEVEL == 43
+    "dfelog";
 #else
     "putback";
 #endif
@@ -792,6 +873,8 @@ __attribute__((constructor, used)) static void m3og_main(void)
             for (int i = 0; i < n_live; i++) dump_range("image_page", live_pages[i], 0x1000);
         }
         dump_log("klog", KLOG_PHYS, KLOG_LEN, 0);
+        /* v10: the camera core's own log lines, kept in RAM by the kernel's log module */
+        dump_camlogs();
         /* v3: the application log ring (kernel command line alog.addr / alog.size). av-cam's own messages go there:
          * after a forced restart it should hold which check gave up ("Lost CAMOUT_V ...", "RCV overflow ..."). */
         dump_log("alog", ALOG_PHYS, ALOG_LEN, 1);

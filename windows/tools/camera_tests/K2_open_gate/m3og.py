@@ -1,4 +1,12 @@
-"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v9): open-gate tests, and a debug dump.
+"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v10): open-gate tests, and a debug dump.
+
+v10 (2026-11-27), after the v9 run and a trace of the picture path (a7m3_map FINDINGS M3-F050..F054, PIPELINE.md): tests
+7 and 8 recorded test 3's frame again. The trace found a stage no test had written: the front end between the sensor
+and the camera core is programmed from its own per-mode register lists, and they still describe the stock frame (3436
+lines). v10 adds test9 (test 3 plus those lists: 45 register fields), test10 (test 9 plus the front end's geometry
+table), and dfelog (one flag byte: the firmware's own status print for the front end). The dump now copies the camera
+core's own log lines out of RAM, which is where that print goes. Tests 9 and 10 set the no-restart bit and the
+status print themselves.
 
 v9 (2026-11-27), after the v8 run (a7m3_map FINDINGS M3-F049): test 6 (first row 281) recorded test 3's frame again, so
 the first row does not matter. Tests 3 to 6 all deliver the stock head lines plus half the added rows, which equals
@@ -44,7 +52,7 @@ itself. Cause as far as the firmware shows it: test 2 made the front-end records
 camera-core timing pair of that drive at the stock 3436 lines. v3 moves the timing pair with the records, adds two
 smaller heights, and the dump now also copies the camera's application log.
 
-Twelve steps, each one service session that loads one small helper library on the camera (helper/m3og.c, design og_m3_v2
+Fifteen steps, each one service session that loads one small helper library on the camera (helper/m3og.c, design og_m3_v2
 of a7m3_map; modding/OG_M3_V2.md there):
 
   dump      READ-ONLY. Kernel and memory facts, the kernel log and the application log, where av-cam sits in memory
@@ -67,12 +75,19 @@ of a7m3_map; modding/OG_M3_V2.md there):
             whether the valid picture ends at a fixed sensor row.
   test7     v9: test 3's bytes with the timing pair 815 / 1810 (781 / 1810 on the 50 system) instead of 836 / 1764.
   test8     v9: test 3's bytes with the sensor's row-count register at 1798 (3596 rows) instead of 1752.
-  putback   WRITES the 4.04 bytes back wherever a test changed them, and clears the two switches below. A restart or a
+  test9     v10: test 3's bytes plus the front end's register lists of the 4K full-frame mode: every line count + 92
+            (receiver, link, image, output format, transfer generator, both channels), the two frame totals, and
+            the transfer cycle. Also sets the no-restart bit and the status print (norestart and dfelog below).
+  test10    v10: test 9's bytes plus the front end's drive table (twelve height words + 92).
+  putback   WRITES the 4.04 bytes back wherever a test changed them, and clears the switches below. A restart or a
             battery pull does the same.
   norestart WRITES one bit (0x40 of the refresh loop's switch byte): the loop keeps retrying but never forces the
             restart. Run it after a test step; the next dump shows how often the loop retried.
   nocheck   WRITES one bit (0x02 of the same byte): the refresh loop does nothing. Shows whether the picture is good
             when the loop leaves it alone.
+  dfelog    v10: WRITES four bits of one flag byte: the firmware's own status print for its front end then writes
+            the generators' cycles, counters and states to the camera's log whenever the sensor's drive mode
+            changes. The next dump copies that log.
 
 Nothing is written to flash except Sony's own service step: the library itself is written to the service work
 partition (/tmp/jiritsu/libJit.so, which is how the camera loads it) and deleted again in the same session. The helper
@@ -100,7 +115,7 @@ the PC; the guard refuses anything else before a byte is sent.
   python -I -B m3og.py <step> --go --firmware-shown 4.04
 
 Results: windows/camera_private/M3K2_<time>_<step>/ (manifest.json, transcript.jsonl, m3og_result.txt; the dump also
-klog.txt, alog.txt and one .bin per memory range).
+klog.txt, alog.txt, camlog_first.txt, camlog_last.txt and one .bin per memory range).
 """
 import argparse
 import contextlib
@@ -118,7 +133,7 @@ sys.path.insert(0, str(HERE.parent / "CT1_usb_first_contact"))
 import ct1_common as c                 # noqa: E402  guards, session log, pinned PMCA-RE
 import ct1_stage2_service as s2        # noqa: E402  connect(), libusb_devices()
 
-KIT = "m3kit2_v9"
+KIT = "m3kit2_v10"
 TEST = "M3K2"
 EXPECTED_MODEL = "ILCE-7M3"
 EXPECTED_FIRMWARE = "4.04"
@@ -128,30 +143,36 @@ KNOWN = json.loads((HERE.parent / "K1_readonly" / "expected_404.json").read_text
 
 # step -> (library, SHA-256, writes?, what it does)
 STEPS = {
-    "dump": ("libJit_m3og_dump.so", "27adf75eccdfbd0dc8954cb4371bcffd9cadb84a9816b5e4dee290616c137443", False,
+    "dump": ("libJit_m3og_dump.so", "77412d615ce26ceae8929c38af22ddb84e3d28231d1fd58f0ed427229fc03daa", False,
              "read-only dump: facts, logs, where av-cam is, what the design's bytes hold, the tables, the refresh loop's state"),
-    "test1": ("libJit_m3og_test1.so", "c65cba9600efd16135997cf085ed19ba8943c92f2289ea2a9110202594e857e7", True,
+    "test1": ("libJit_m3og_test1.so", "1b404fce84b2f80f5a81013277db536f0e9df77f57840cf1c09b7ae87c5d70f9", True,
               "TEST 1: the 4K 24p/25p full-frame sensor mode reads the whole sensor height (7 bytes)"),
-    "test2": ("libJit_m3og_test2.so", "9ef2c514c3f5f3bbcd8a5017227aa302fd91d8c58d59355ab51ea2696a29e9a7", True,
+    "test2": ("libJit_m3og_test2.so", "89364265bc356213696445816ee393f004f4a8cb6afaa84e1829a678a21d63bd", True,
               "TEST 2: sensor + front end + timing: the whole 3:2 height squeezed into the stock 4K file"),
-    "test3": ("libJit_m3og_test3.so", "98456bdc2a75e520ae04fb9166eeda491aabfb5efec9293cbe1287eb726698a5", True,
+    "test3": ("libJit_m3og_test3.so", "acd3793713656d11fd884f299320cbdfa7b9b201ddd14c3e6bb061754107d29b", True,
               "TEST 3: 92 more rows with the stock line period (picture 3468 rows; 59.94 system)"),
-    "test4": ("libJit_m3og_test4.so", "64c88295bef0766c981fd15bdf4903109091bdd29226920c603b21b44cc3c749", True,
+    "test4": ("libJit_m3og_test4.so", "6b03351fe12fa38c82ea7e1b1142fc30b1447a17dba724aeb2585e0bf5500c83", True,
               "TEST 4: as test 2 for a quarter of the extra height (picture 3532 rows)"),
-    "test5": ("libJit_m3og_test5.so", "8683e60a4b1a51b0fe38d940fb4d514434cac8d080ff5638b05ac74e1497393e", True,
+    "test5": ("libJit_m3og_test5.so", "2b41722335a059dd0375ce261ff406226c7c59aba84679b8fc517f6e99285109", True,
               "TEST 5: test 3 plus the size row (inner height 3468): does the whole taller picture arrive?"),
-    "test6": ("libJit_m3og_test6.so", "327e1400a37ce25f4d7ed0989e8823f5342cdd89132701f09516f052832a194d", True,
+    "test6": ("libJit_m3og_test6.so", "3b03ed5888c814440f7d276a46e95450346368da8a672ee238e12b7012dc7ce8", True,
               "TEST 6: test 3 with the first sensor row moved up by all 92 rows (row 281): is the frame whole?"),
-    "test7": ("libJit_m3og_test7.so", "0c3408c8feba2413fc4a83bf0c6b8c2e6f89e6cd5eb256719197002844eaf2bf", True,
+    "test7": ("libJit_m3og_test7.so", "88d07d5a6bcb55cea66e9ea76da0a064aae3677d95adf41748a025f495d82cc9", True,
               "TEST 7: test 3 with the timing pair's line count raised twice as far (1810): is the frame whole?"),
-    "test8": ("libJit_m3og_test8.so", "b9167cb96af7dbcd8958b8e7f95bd26b9ddf7ac4e03d12488e370345d5ee5a27", True,
+    "test8": ("libJit_m3og_test8.so", "5ef127218bc7f5c23324cba32fcb4168771bf58a70541120f6f42ed2fa0a0da2", True,
               "TEST 8: test 3 with the sensor's row count raised twice as far (3596 rows): is the frame whole?"),
-    "putback": ("libJit_m3og_putback.so", "e8346ab1fc1335efcc9bf336f32df3c240359c3a35ca25f42d40e052be1e6787", True,
-                "PUT BACK: the 4.04 bytes again wherever a test changed them; both switches cleared"),
-    "norestart": ("libJit_m3og_norestart.so", "bf5248e0b272ef3d13a7c3341bd5116277c2d6426755d1bbdf6bb32420d20c20", True,
+    "test9": ("libJit_m3og_test9.so", "31e185d485da53b317bcc08ee02e248d76d4643499332ad53f53dd10d33aa0d8", True,
+              "TEST 9: test 3 plus the front end's own line counts (45 fields); also sets no-restart and the front-end log"),
+    "test10": ("libJit_m3og_test10.so", "217b10190feb38de39c365b74f824154b53722a69edd5c1638d317ef8103299c", True,
+               "TEST 10: test 9 plus the front end's geometry table (12 height words); also sets no-restart and the front-end log"),
+    "putback": ("libJit_m3og_putback.so", "2378950623dc5cf5e348b4c1d5da3489e4847c3c844ed7a58c6936b7d9a187e5", True,
+                "PUT BACK: the 4.04 bytes again wherever a test changed them; the switches and the front-end log cleared"),
+    "norestart": ("libJit_m3og_norestart.so", "b0fc85746809c3ff1215ee7686c6a08160330fa620ed508d3fc42a508d513b85", True,
                   "NO RESTART: the camera's refresh loop keeps retrying but never forces a restart (1 bit)"),
-    "nocheck": ("libJit_m3og_nocheck.so", "9fd8e0190e5f9e79100b0cb24cc8cc35adb4d22c8e75b946de6f48dfe3e73c11", True,
+    "nocheck": ("libJit_m3og_nocheck.so", "b0c9fe73ef30160331bd6a2430d9d88fa6feeab22236fca3fa6a11185b16b398", True,
                 "NO CHECK: the camera's refresh loop is switched off (1 bit)"),
+    "dfelog": ("libJit_m3og_dfelog.so", "df7fd065b62e919eea139cb9eb0afccb206600b846f1c674de0ae057387d717b", True,
+               "FRONT-END LOG: the firmware's own status print for its front end is switched on (4 bits of one byte)"),
 }
 PINNED = {sha for _n, sha, _w, _t in STEPS.values()}
 LIB_MAX = 65520                                  # one upload packet (the A7 IV client's bound)
@@ -386,7 +407,7 @@ def steps(session, camera, step, lib, out):
     facts = out["result"] = parse_result(result, step)
     for name, blob in facts.pop("_ranges", {}).items():
         session.save_bytes("mem_%s.bin" % name, blob)
-    for key, name in (("_klog", "klog.txt"), ("_alog", "alog.txt")):
+    for key, name in (("_klog", "klog.txt"), ("_alog", "alog.txt"), ("_camlog_first", "camlog_first.txt"), ("_camlog_last", "camlog_last.txt")):
         blob = facts.pop(key, None)
         if blob is not None:
             session.save_bytes(name, blob)
@@ -407,7 +428,7 @@ def parse_result(data, step):
                    else "NOT DONE" if pick("NOT DONE: ") else "UNKNOWN")
     blocks = {}
     for ln in lines:
-        m = re.match(r"block (\S+) va (0x[0-9a-f]+) len (0x[0-9a-f]+) .*  (STOCK|TEST[1-8]|MIXED|OTHER)$", ln)
+        m = re.match(r"block (\S+) va (0x[0-9a-f]+) len (0x[0-9a-f]+) .*  (STOCK|TEST\d+|MIXED|OTHER)$", ln)
         if m:
             blocks.setdefault(m.group(1), []).append(m.group(4))
     facts = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "header": lines[0] if lines else "",
@@ -417,6 +438,8 @@ def parse_result(data, step):
              "image_pages_live": [ln.split()[2] for ln in lines if ln.startswith("page va ") and "differs from 4.04" in ln],
              "identity_differs": sum(1 for ln in lines if ln.endswith("DIFFERS from the 4.04 file")),
              "guard": [ln[6:] for ln in lines if ln.startswith("GUARD ")],
+             "dfelog": [ln[7:] for ln in lines if ln.startswith("DFELOG ")],
+             "camlog": [ln for ln in lines if ln.startswith("camlog ")],
              "tv_system": next((ln.split("tv system ", 1)[1].strip() for ln in lines if ln.startswith("slot 28 hmax ") and "tv system " in ln), None),
              "verdicts": verdicts, "outcome": outcome,
              "outcome_line": pick("DONE: ") or pick("NOTHING TO DO") or pick("NOT DONE: ") or pick("!! UNDO INCOMPLETE"),
@@ -435,12 +458,24 @@ def parse_result(data, step):
     if ranges:
         facts["_ranges"] = ranges
     facts["last_frame"] = last_frame(ranges)
-    for key in ("klog", "alog"):
+    for key in ("klog", "alog", "camlog_first", "camlog_last"):
         k = re.search(r"== %s phys \S+ len \S+\n(.*?)\n== (end|cut)" % key, t, re.S)
         if k:
             facts["_" + key] = k.group(1).encode("utf8", "replace")
             facts[key + "_bytes"] = len(facts["_" + key])
+    facts["log_lines"] = log_highlights(facts.get("_camlog_first", b"") + b"\n" + facts.get("_camlog_last", b""))
     return facts
+
+
+def log_highlights(blob):
+    """The lines of the camera core's log that say what the front end runs and why a frame was refreshed (first of each)."""
+    t = blob.decode("utf8", "replace")
+    out = []
+    for pat in (r"\[DrvSgc0Start\][^.\n]{0,70}", r"HVcyc:[ 0-9a-fDT]{0,60}", r"Lost CAMOUT_V[^\n]{0,90}?\]", r"S-Ele Refresh[^.\n]{0,40}"):
+        found = re.findall(pat, t)
+        for m in list(dict.fromkeys(found))[:3]:
+            out.append(m.strip())
+    return out
 
 
 def last_frame(ranges):
@@ -479,6 +514,13 @@ def say_result(session, f):
         session.say("  VERDICT " + v)
     if f.get("guard"):
         session.say("  Refresh-loop switch: " + f["guard"][-1])
+    if f.get("dfelog"):
+        session.say("  Front-end log switch: " + f["dfelog"][-1])
+    if f.get("camlog"):
+        session.say("  Camera log: first lines %d bytes, last lines %d bytes%s" % (f.get("camlog_first_bytes", 0), f.get("camlog_last_bytes", 0),
+                    "" if all("NOT" not in ln for ln in f["camlog"]) else " (an area was not where expected: see m3og_result.txt)"))
+        for ln in f.get("log_lines") or []:
+            session.say("    log: " + ln)
     lf = f.get("last_frame")
     if lf:
         session.say("  Last frame before USB: frame %.3f ms (cycle %d x %d), output sync %.3f ms after frame start, refresh count %d, lost sync seen: %s"
@@ -493,12 +535,13 @@ def say_result(session, f):
 
 def canned_result(step, state):
     """What the helper would report on a model camera when it cannot be emulated here (the kit ships no firmware).
-    state: the design's state before the step ('stock', 'test1' .. 'test4'), with '|<hex>' appended while a refresh-loop
-    switch bit is set. Returns (text, new state)."""
-    name = {"stock": "READY (stock)", **{"test%d" % n: "READY (test %d applied)" % n for n in range(1, 9)}}
+    state: the design's state before the step ('stock', 'test1' .. 'test10'), with '|<hex>' appended while a switch bit is
+    set (0x40 / 0x02 = the refresh loop's bits, 0x100 = the front-end log). Returns (text, new state)."""
+    name = {"stock": "READY (stock)", **{"test%d" % n: "READY (test %d applied)" % n for n in range(1, 11)}}
     state, _bar, gtxt = state.partition("|")
     guard = int(gtxt or "0", 16)
-    gline = lambda g: "GUARD flag byte 0x%02x  refresh loop %s" % (g, "OFF" if g & 2 else "on, NO FORCED RESTART" if g & 0x40 else "STOCK")   # noqa: E731
+    gline = lambda g: ("GUARD flag byte 0x%02x  refresh loop %s\nDFELOG flag byte 0x%02x  front-end status print %s"   # noqa: E731
+                       % (g & 0xFF, "OFF" if g & 2 else "on, NO FORCED RESTART" if g & 0x40 else "STOCK", 0x0F if g & 0x100 else 0, "ON" if g & 0x100 else "off"))
     lines = ["m3og m3og_v3 level %s for ILCE-7M3 4.04" % step, "euid 0x00000000 pid 0x00000001",
              "== file /proc/cmdline", "(simulated camera)", "== end 0x00000012 bytes", "== identity"]
     lines += ["lirohdr  SAME as the 4.04 file"] + ["range r%d  SAME as the 4.04 file" % k for k in range(2)]
@@ -507,8 +550,8 @@ def canned_result(step, state):
     lines += ["== tv system", "slot 28 hmax 0x0000020d slot 27 hmax 0x00000001  tv system 59.94 (slot 28)"]
     lines += ["VERDICT " + name[state], gline(guard)]
     new = state
-    if step in ("norestart", "nocheck"):
-        bit = 0x40 if step == "norestart" else 0x02
+    if step in ("norestart", "nocheck", "dfelog"):
+        bit = {"norestart": 0x40, "nocheck": 0x02, "dfelog": 0x100}[step]
         lines.append("NOTHING TO DO: the switch bit is already set" if guard & bit
                      else "DONE: 0x00000001 bytes written in 0x00000001 runs, each read back (simulated)")
         guard |= bit
@@ -519,17 +562,25 @@ def canned_result(step, state):
         if cleared:
             lines.append("guard: switch bits cleared, 1 byte written and read back")
             guard = 0
-        if step != "putback" and state not in ("stock", step) and (step, state) not in (("test2", "test1"), ("test5", "test3")):
+        sets = 0x140 if step in ("test9", "test10") else 0
+        if step != "putback" and state not in ("stock", step) and (step, state) not in (("test2", "test1"), ("test5", "test3"), ("test9", "test3"),
+                                                                                    ("test10", "test9"), ("test10", "test3")):
             lines.append("NOT DONE: block fe_rec_0a byte at 0x63e0d79a holds 0xd2 (another test is applied: run the put-back first); nothing is written")
-        elif target == state and not cleared:
+        elif target == state and not cleared and (guard & sets) == sets:
             lines.append("NOTHING TO DO: every byte already holds the target")
         else:
             lines.append("DONE: 0x00000007 bytes written in 0x00000004 runs, each read back (simulated)")
             new = target
+            guard |= sets
         lines += ["after:", "VERDICT " + name[new], gline(guard)]
     else:
         lines += ["== mem staging va 0x64745700 phys 0x04745700 len 0x00000020", "0x64745700 " + "00" * 32, "== end",
                   "== klog phys 0x035a5000 len 0x00020000", "<6>[ 0.000000] (simulated kernel log)", "== end",
+                  "== camlog", "camlog subsystem phys 0x03162054 header 00  as expected",
+                  "camlog area camlog_first phys 0x031c412c size 0x0000a044 header 00  as expected",
+                  "== camlog_first phys 0x031c4150 len 0x0000a020", "[DrvSgc0Start]mode4,syncMode0,H525,V2860,VdNum1 .HVcyc: D0 20c0b2c T0 3430d6c T1        0 T2        0", "== end",
+                  "camlog area camlog_last phys 0x031a20e4 size 0x00002024 header 00  as expected",
+                  "== camlog_last phys 0x031a2108 len 0x00002000", "(simulated camera log)", "== end",
                   "== alog phys 0x03524fc0 len 0x00060040", "(simulated application log)", "== end"]
     lines.append("== done, bytes before this line: 0x00000100")
     return ("\n".join(lines) + "\n").encode(), new + ("|%x" % guard if guard else "")
@@ -720,8 +771,8 @@ def emulator():
             raise AssertionError("emulated helper: %s" % r.bad)
         mem["m"] = bytes(cam.mem)
         res = b"".join(bytes(v) for v in cam.created.values())
-        v = re.findall(rb"VERDICT READY \((stock|test [1-8] applied)\)", res)
-        st = {b"stock": "stock", **{b"test %d applied" % n: "test%d" % n for n in range(1, 9)}}.get(v[-1] if v else b"", state)
+        v = re.findall(rb"VERDICT READY \((stock|test \d+ applied)\)", res)
+        st = state if not v else "stock" if v[-1] == b"stock" else "test" + v[-1].split()[1].decode()
         return res, st
     return run
 
@@ -786,10 +837,26 @@ def selftest():
                     ("dump", "READY (test 4 applied)", None, "on, NO FORCED RESTART"), ("nocheck", "READY (test 4 applied)", "DONE", "OFF"),
                     ("dump", "READY (test 4 applied)", None, "OFF"), ("putback", "READY (stock)", "DONE", "STOCK"),
                     ("dump", "READY (stock)", None, "STOCK")], str(trail))
+    sim = make_sim(files=files, emulate=emulator())
+    trail = []
+    for step in ("test3", "test9", "test10", "dump", "test9", "putback", "dfelog", "dump", "putback", "dump"):
+        s, _m, sim = simulate(step, sim)
+        f = s.results.get("k2", {}).get("result", {})
+        trail.append((step, f.get("verdicts", [""])[-1], f.get("outcome"), (f.get("guard") or [""])[-1].split("refresh loop ")[-1],
+                      (f.get("dfelog") or [""])[-1].split("status print ")[-1]))
+    check("v10 ladder: test9 over test3 and test10 over test9 go through and set both switches; test9 over test10 is refused; putback clears all",
+          trail == [("test3", "READY (test 3 applied)", "DONE", "STOCK", "off"), ("test9", "READY (test 9 applied)", "DONE", "on, NO FORCED RESTART", "ON"),
+                    ("test10", "READY (test 10 applied)", "DONE", "on, NO FORCED RESTART", "ON"), ("dump", "READY (test 10 applied)", None, "on, NO FORCED RESTART", "ON"),
+                    ("test9", "READY (test 10 applied)", "NOT DONE", "on, NO FORCED RESTART", "ON"), ("putback", "READY (stock)", "DONE", "STOCK", "off"),
+                    ("dfelog", "READY (stock)", "DONE", "STOCK", "ON"), ("dump", "READY (stock)", None, "STOCK", "ON"),
+                    ("putback", "READY (stock)", "DONE", "STOCK", "off"), ("dump", "READY (stock)", None, "STOCK", "off")], str(trail))
     s, _m, sim = simulate("dump", make_sim(files=files, emulate=emulator()))
     f = s.results.get("k2", {}).get("result", {})
     check("dump: TV system reported, kernel log and application log saved",
           f.get("tv_system") == "59.94 (slot 28)" and f.get("klog_bytes", 0) > 0 and f.get("alog_bytes", 0) > 0, str({k: f.get(k) for k in ("tv_system", "klog_bytes", "alog_bytes")}))
+    check("dump: both areas of the camera's own log saved, the front end's lines picked out",
+          f.get("camlog_first_bytes", 0) > 0 and f.get("camlog_last_bytes", 0) > 0 and any("DrvSgc0Start" in ln for ln in f.get("log_lines", []))
+          and any(ln.startswith("HVcyc:") for ln in f.get("log_lines", [])), str(f.get("log_lines")))
     # 2. the order of a session
     s, _m, sim = simulate("test1", make_sim(files=files))
     seq = sent(s)
@@ -922,7 +989,7 @@ def main():
         print("Nothing was sent to any device.")
         return
     if not args.step:
-        parser.error("name the step: dump, test1 to test8, norestart, nocheck or putback")
+        parser.error("name the step: dump, test1 to test10, norestart, nocheck, dfelog or putback")
     lib = library(args.step)
     if args.dry_run:
         lines, _s, _sim = dry_run_lines(args.step)
