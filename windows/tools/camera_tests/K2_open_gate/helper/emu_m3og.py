@@ -27,7 +27,7 @@ ROOT = HERE.parents[2]
 AVCAM = ROOT / 'work' / 'extracted' / 'a7m3_404' / '0700_part_image' / 'dev' / 'nflasha3' / 'av-cam.bin'
 KEMCO = ROOT / 'work' / 'extracted' / 'a7m3_404' / 'update' / '0800_appli' / 'setting' / 'kemco.txt'
 DESIGN = ROOT / 'modding' / 'designs' / 'og_m3_v2.json'
-LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'putback', 'norestart', 'nocheck')}
+LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'putback', 'norestart', 'nocheck')}
 
 BASE, STACK, STACK_SZ, RET = 0x10000000, 0x7E000000, 0x100000, 0x7F000000
 AV_PHYS, AV_END, KLOG_PHYS, KLOG_LEN = 0x035C6000, 0x048C6000, 0x035A5000, 0x20000
@@ -366,7 +366,7 @@ def main():
     # 3. test 2 on top of test 1; then tests 2, 3, 4 on stock
     r, t = run('test2', cam_from(mem['test1']))
     check(not r.bad and 'DONE: ' in t and 'READY (test 2 applied)' in t, 'test2 after test1: DONE, READY (test 2 applied)')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6')):
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8')):
         cam = Camera()
         r, t = run(name, cam)
         dn = diff(cam.mem)
@@ -401,13 +401,13 @@ def main():
     r, t = run('putback', cam)
     check('READY (stock)' in t and bytes(cam.mem) == pal_stock, 'putback on the 50-system camera: memory as before')
     # 4. one test over another refuses
-    for over, under in (('test1', 'test2'), ('test3', 'test2'), ('test2', 'test4'), ('test4', 'test3'), ('test4', 'test5'), ('test3', 'test5'), ('test6', 'test3'), ('test3', 'test6'), ('test5', 'test6')):
+    for over, under in (('test1', 'test2'), ('test3', 'test2'), ('test2', 'test4'), ('test4', 'test3'), ('test4', 'test5'), ('test3', 'test5'), ('test6', 'test3'), ('test3', 'test6'), ('test5', 'test6'), ('test7', 'test3'), ('test8', 'test7'), ('test3', 'test8')):
         cam = cam_from(mem[under])
         r, t = run(over, cam)
         check(not r.bad and 'run the put-back first' in t and not cam.writes and bytes(cam.mem) == mem[under],
               '%s over %s: NOT DONE, nothing written' % (over, under))
     # 5. put back
-    for name in ('test1', 'test2', 'test3', 'test4', 'test5', 'test6'):
+    for name in ('test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8'):
         cam = cam_from(mem[name])
         r, t = run('putback', cam)
         check(not r.bad and 'DONE: ' in t and 'READY (stock)' in t and bytes(cam.mem) == bytes(stock), 'putback after %s: memory equals 4.04 again' % name)
@@ -422,7 +422,12 @@ def main():
           and [s for s in steps['test6']['sensor_sites'] if s['reg'] != '0x0728'] == [s for s in steps['test3']['sensor_sites'] if s['reg'] != '0x0728']
           and steps['test6']['records'] == steps['test3']['records'] and steps['test6']['timing'] == steps['test3']['timing'],
           'test6 differs from test3 in the first-row byte only (row 281 instead of 327)')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6')):
+    check(steps['test7']['timing']['59.94']['V2'] == 1810 and steps['test7']['timing']['59.94']['H2'] == 815
+          and steps['test7']['sensor_sites'] == steps['test3']['sensor_sites'] and steps['test7']['records'] == steps['test3']['records']
+          and steps['test8']['rows'] == 3596 and steps['test8']['first_row'] == 327 and steps['test8']['timing'] == steps['test3']['timing']
+          and steps['test8']['records'] == steps['test3']['records'],
+          'test7 = test3 with the pair 815 / 1810; test8 = test3 with 3596 sensor rows; nothing else differs')
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8')):
         r, t = run('dump', cam_from(mem[name]))
         check(('VERDICT READY (test %d applied)' % n) in t, 'dump after %s: READY (test %d applied)' % (name, n))
     # 5b. the second camera run's state (v2 test 2: sensor + records, timing pair still stock) is reported as partly applied

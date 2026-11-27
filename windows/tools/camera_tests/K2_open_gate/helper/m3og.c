@@ -23,6 +23,10 @@
  *             (M3-F046); this tests whether the size row is what sets that row.
  *   level 25  TEST 6 (v8). Test 3 with the first sensor row moved up by the whole 92 rows (row 281, not 327). Tests whether
  *             the valid picture ends at a fixed sensor row (M3-F048): if so, this frame is whole.
+ *   level 26  TEST 7 (v9). Test 3 with the line-pair count of the timing pair raised by twice as much (1810; the period
+ *             shortens to 815 / 781 to keep the blank). Whole frame if a stale stock count is added to ours.
+ *   level 27  TEST 8 (v9). Test 3 with the sensor's row-count register raised by twice as much (3596 rows from row 327).
+ *             Whole frame if a second sensor row count stays stock (M3-F049).
  *   level 31  PUT BACK. Writes the 4.04 bytes back wherever a test changed them, and clears the two switch bits below.
  *   level 41  NO RESTART (v4). Sets bit 0x40 of the firmware's own switch byte for its output-sync refresh loop: the loop
  *             keeps retrying but never forces the restart. One byte.
@@ -59,19 +63,19 @@ typedef unsigned long long u64;
 #ifndef LEVEL
 #define LEVEL 1
 #endif
-#if LEVEL != 1 && LEVEL != 11 && LEVEL != 21 && LEVEL != 22 && LEVEL != 23 && LEVEL != 24 && LEVEL != 25 && LEVEL != 31 && LEVEL != 41 && LEVEL != 42
-#error "LEVEL must be 1, 11, 21, 22, 23, 24, 25, 31, 41 or 42"
+#if LEVEL != 1 && LEVEL != 11 && LEVEL != 21 && LEVEL != 22 && LEVEL != 23 && LEVEL != 24 && LEVEL != 25 && LEVEL != 26 && LEVEL != 27 && LEVEL != 31 && LEVEL != 41 && LEVEL != 42
+#error "LEVEL must be 1, 11, 21, 22, 23, 24, 25, 26, 27, 31, 41 or 42"
 #endif
 #define GUARD_ONLY (LEVEL == 41 || LEVEL == 42)
 #define WRITES (LEVEL != 1)
 
 struct ident { const char *name; u32 va; u32 len; u8 sha[32]; };
 /* patch[n]: the bytes of test n+1 that differ from stock, npatch[n] triplets {offset low, offset high, value} */
-struct block { const char *name; u32 va; u32 len; const u8 *stock; const u8 *patch[6]; u16 npatch[6]; };
+struct block { const char *name; u32 va; u32 len; const u8 *stock; const u8 *patch[8]; u16 npatch[8]; };
 struct range { const char *name; u32 va; u32 len; };
 #include "m3og_design.h"
 
-#define VERSION "m3og_v8"
+#define VERSION "m3og_v9"
 #define KLOG_PHYS 0x035A5000u
 #define KLOG_LEN 0x20000u
 #define ALOG_PHYS 0x03524FC0u            /* kernel command line: alog.addr=0x03524FC0 alog.size=0x60040 */
@@ -401,9 +405,9 @@ static int n_blk;
 static int tv_sys = -1;
 static u8 cur[N_BLOCKS][MAXB];
 static u8 tgt[N_STEPS][N_BLOCKS][MAXB];  /* the full bytes of each test, built from stock + patch when a block is taken */
-static u8 eq[N_BLOCKS];                 /* bit 0: every byte is the stock byte; bit n: every byte is test n's byte */
-enum { ST_STOCK, ST_T1, ST_T2, ST_T3, ST_T4, ST_T5, ST_T6, ST_MIXED, ST_OTHER, ST_UNREAD };
-static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "TEST3", "TEST4", "TEST5", "TEST6", "MIXED", "OTHER", "NOT READ"};
+static u16 eq[N_BLOCKS];                /* bit 0: every byte is the stock byte; bit n: every byte is test n's byte */
+enum { ST_STOCK, ST_T1, ST_T2, ST_T3, ST_T4, ST_T5, ST_T6, ST_T7, ST_T8, ST_MIXED, ST_OTHER, ST_UNREAD };
+static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "TEST3", "TEST4", "TEST5", "TEST6", "TEST7", "TEST8", "MIXED", "OTHER", "NOT READ"};
 
 static void take_block(int i, const struct block *b)
 {
@@ -454,7 +458,7 @@ static int block_state(int i)
     }
     int st = ST_MIXED;
     eq[i] = ds == 0;
-    for (int n = N_STEPS - 1; n >= 0; n--) if (d[n] == 0) { eq[i] |= (u8)(2u << n); st = ST_T1 + n; }
+    for (int n = N_STEPS - 1; n >= 0; n--) if (d[n] == 0) { eq[i] |= (u16)(2u << n); st = ST_T1 + n; }
     if (ds == 0) st = ST_STOCK;
     else if (st == ST_MIXED && other) st = ST_OTHER;
     ps("block "); ps(b->name); ps(" va "); px(b->va); ps(" len "); phex(b->len, 4);
@@ -496,7 +500,7 @@ static void verdict(int idok, const int st[N_BLOCKS])
     ps("VERDICT ");
     if (!idok) { ps("NOT READY (av-cam is not where or what the 4.04 file says)\n"); return; }
     if (n_blk != N_BLOCKS) { ps("NOT READY (the TV system slot of the 4K drive was not recognised)\n"); return; }
-    u32 all = 0x7f;
+    u32 all = 0x1ff;
     for (int i = 0; i < N_BLOCKS; i++) all &= st[i] == ST_UNREAD ? 0 : eq[i];
     if (all & 1) ps("READY (stock)\n");
     else if (all & 2) ps("READY (test 1 applied)\n");
@@ -505,6 +509,8 @@ static void verdict(int idok, const int st[N_BLOCKS])
     else if (all & 16) ps("READY (test 4 applied)\n");
     else if (all & 32) ps("READY (test 5 applied)\n");
     else if (all & 64) ps("READY (test 6 applied)\n");
+    else if (all & 128) ps("READY (test 7 applied)\n");
+    else if (all & 256) ps("READY (test 8 applied)\n");
     else ps("NOT READY (the design's bytes are partly applied or changed by something else)\n");
 }
 
@@ -612,6 +618,10 @@ static const u8 *target(int i)
     return tgt[4][i];
 #elif LEVEL == 25
     return tgt[5][i];
+#elif LEVEL == 26
+    return tgt[6][i];
+#elif LEVEL == 27
+    return tgt[7][i];
 #else
     return B[i]->stock;
 #endif
@@ -709,6 +719,10 @@ static const char *const LEVEL_NAME =
     "test5";
 #elif LEVEL == 25
     "test6";
+#elif LEVEL == 26
+    "test7";
+#elif LEVEL == 27
+    "test8";
 #elif LEVEL == 41
     "norestart";
 #elif LEVEL == 42

@@ -1,4 +1,10 @@
-"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v8): open-gate tests, and a debug dump.
+"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v9): open-gate tests, and a debug dump.
+
+v9 (2026-11-27), after the v8 run (a7m3_map FINDINGS M3-F049): test 6 (first row 281) recorded test 3's frame again, so
+the first row does not matter. Tests 3 to 6 all deliver the stock head lines plus half the added rows, which equals
+(our line-pair count + the stock one) - 10 lines: one new count plus one stock count. The sensor's row-count register
+and the timing pair's count were always raised by the same amount, so v9 adds two steps that double one of them:
+test7 (pair 815 / 1810) and test8 (3596 sensor rows). Whichever gives a whole frame names the second copy.
 
 v8 (2026-11-27), after the v7 run (a7m3_map FINDINGS M3-F048): test 5 (test 3 + size row) recorded the same frame as
 test 3 (picture to row 2136, black to 2155, four strip rows), so the size row does not set the last row. In tests 3,
@@ -38,7 +44,7 @@ itself. Cause as far as the firmware shows it: test 2 made the front-end records
 camera-core timing pair of that drive at the stock 3436 lines. v3 moves the timing pair with the records, adds two
 smaller heights, and the dump now also copies the camera's application log.
 
-Ten steps, each one service session that loads one small helper library on the camera (helper/m3og.c, design og_m3_v2
+Twelve steps, each one service session that loads one small helper library on the camera (helper/m3og.c, design og_m3_v2
 of a7m3_map; modding/OG_M3_V2.md there):
 
   dump      READ-ONLY. Kernel and memory facts, the kernel log and the application log, where av-cam sits in memory
@@ -59,6 +65,8 @@ of a7m3_map; modding/OG_M3_V2.md there):
             and the two read-out time words: tests whether the size row is what ends the picture early.
   test6     v8: test 3's bytes with the first sensor row at 281 instead of 327 (one byte differs from test 3): tests
             whether the valid picture ends at a fixed sensor row.
+  test7     v9: test 3's bytes with the timing pair 815 / 1810 (781 / 1810 on the 50 system) instead of 836 / 1764.
+  test8     v9: test 3's bytes with the sensor's row-count register at 1798 (3596 rows) instead of 1752.
   putback   WRITES the 4.04 bytes back wherever a test changed them, and clears the two switches below. A restart or a
             battery pull does the same.
   norestart WRITES one bit (0x40 of the refresh loop's switch byte): the loop keeps retrying but never forces the
@@ -110,7 +118,7 @@ sys.path.insert(0, str(HERE.parent / "CT1_usb_first_contact"))
 import ct1_common as c                 # noqa: E402  guards, session log, pinned PMCA-RE
 import ct1_stage2_service as s2        # noqa: E402  connect(), libusb_devices()
 
-KIT = "m3kit2_v8"
+KIT = "m3kit2_v9"
 TEST = "M3K2"
 EXPECTED_MODEL = "ILCE-7M3"
 EXPECTED_FIRMWARE = "4.04"
@@ -120,25 +128,29 @@ KNOWN = json.loads((HERE.parent / "K1_readonly" / "expected_404.json").read_text
 
 # step -> (library, SHA-256, writes?, what it does)
 STEPS = {
-    "dump": ("libJit_m3og_dump.so", "bddaebd78936f6f8076d7bf8b91b06fe28c3acc17176a385fe903625fc208f98", False,
+    "dump": ("libJit_m3og_dump.so", "27adf75eccdfbd0dc8954cb4371bcffd9cadb84a9816b5e4dee290616c137443", False,
              "read-only dump: facts, logs, where av-cam is, what the design's bytes hold, the tables, the refresh loop's state"),
-    "test1": ("libJit_m3og_test1.so", "2a948dc331a645a445c021ca89bd296aba10c58beaae2e840291fe664d861dc4", True,
+    "test1": ("libJit_m3og_test1.so", "c65cba9600efd16135997cf085ed19ba8943c92f2289ea2a9110202594e857e7", True,
               "TEST 1: the 4K 24p/25p full-frame sensor mode reads the whole sensor height (7 bytes)"),
-    "test2": ("libJit_m3og_test2.so", "324fa53eecfc6f5522d117125e5f4e45522b4f1964982bcc6cca6ceefa71a302", True,
+    "test2": ("libJit_m3og_test2.so", "9ef2c514c3f5f3bbcd8a5017227aa302fd91d8c58d59355ab51ea2696a29e9a7", True,
               "TEST 2: sensor + front end + timing: the whole 3:2 height squeezed into the stock 4K file"),
-    "test3": ("libJit_m3og_test3.so", "7394c42927db515f33112035f35423bf01f66df9bc857e4863b31d1367cf4f56", True,
+    "test3": ("libJit_m3og_test3.so", "98456bdc2a75e520ae04fb9166eeda491aabfb5efec9293cbe1287eb726698a5", True,
               "TEST 3: 92 more rows with the stock line period (picture 3468 rows; 59.94 system)"),
-    "test4": ("libJit_m3og_test4.so", "3984b22243f4a78f4382636f5e4218d15d931f97a5bc32165a94c934d222b78e", True,
+    "test4": ("libJit_m3og_test4.so", "64c88295bef0766c981fd15bdf4903109091bdd29226920c603b21b44cc3c749", True,
               "TEST 4: as test 2 for a quarter of the extra height (picture 3532 rows)"),
-    "test5": ("libJit_m3og_test5.so", "2b67ee7c790b6a1f2b119ab8f6a497e0de374a6b275c5e7bf688a71de87e7646", True,
+    "test5": ("libJit_m3og_test5.so", "8683e60a4b1a51b0fe38d940fb4d514434cac8d080ff5638b05ac74e1497393e", True,
               "TEST 5: test 3 plus the size row (inner height 3468): does the whole taller picture arrive?"),
-    "test6": ("libJit_m3og_test6.so", "b923ef81a54ba63f4118ef7b32cb884cc4f178ac8da60fe8bd2b1d7b52597b6d", True,
+    "test6": ("libJit_m3og_test6.so", "327e1400a37ce25f4d7ed0989e8823f5342cdd89132701f09516f052832a194d", True,
               "TEST 6: test 3 with the first sensor row moved up by all 92 rows (row 281): is the frame whole?"),
-    "putback": ("libJit_m3og_putback.so", "325977218ef352237baf7fd3ad669811e240912cc2e9232363730b5248fe034b", True,
+    "test7": ("libJit_m3og_test7.so", "0c3408c8feba2413fc4a83bf0c6b8c2e6f89e6cd5eb256719197002844eaf2bf", True,
+              "TEST 7: test 3 with the timing pair's line count raised twice as far (1810): is the frame whole?"),
+    "test8": ("libJit_m3og_test8.so", "b9167cb96af7dbcd8958b8e7f95bd26b9ddf7ac4e03d12488e370345d5ee5a27", True,
+              "TEST 8: test 3 with the sensor's row count raised twice as far (3596 rows): is the frame whole?"),
+    "putback": ("libJit_m3og_putback.so", "e8346ab1fc1335efcc9bf336f32df3c240359c3a35ca25f42d40e052be1e6787", True,
                 "PUT BACK: the 4.04 bytes again wherever a test changed them; both switches cleared"),
-    "norestart": ("libJit_m3og_norestart.so", "111abb7550c47bf98858200853e096db3ec728e76b29cf92ec25f044c6167f71", True,
+    "norestart": ("libJit_m3og_norestart.so", "bf5248e0b272ef3d13a7c3341bd5116277c2d6426755d1bbdf6bb32420d20c20", True,
                   "NO RESTART: the camera's refresh loop keeps retrying but never forces a restart (1 bit)"),
-    "nocheck": ("libJit_m3og_nocheck.so", "c9599c68af6dab812a8a29ec573b139389df753c7a1548b876789f0678edf17a", True,
+    "nocheck": ("libJit_m3og_nocheck.so", "9fd8e0190e5f9e79100b0cb24cc8cc35adb4d22c8e75b946de6f48dfe3e73c11", True,
                 "NO CHECK: the camera's refresh loop is switched off (1 bit)"),
 }
 PINNED = {sha for _n, sha, _w, _t in STEPS.values()}
@@ -395,7 +407,7 @@ def parse_result(data, step):
                    else "NOT DONE" if pick("NOT DONE: ") else "UNKNOWN")
     blocks = {}
     for ln in lines:
-        m = re.match(r"block (\S+) va (0x[0-9a-f]+) len (0x[0-9a-f]+) .*  (STOCK|TEST[1-6]|MIXED|OTHER)$", ln)
+        m = re.match(r"block (\S+) va (0x[0-9a-f]+) len (0x[0-9a-f]+) .*  (STOCK|TEST[1-8]|MIXED|OTHER)$", ln)
         if m:
             blocks.setdefault(m.group(1), []).append(m.group(4))
     facts = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "header": lines[0] if lines else "",
@@ -483,7 +495,7 @@ def canned_result(step, state):
     """What the helper would report on a model camera when it cannot be emulated here (the kit ships no firmware).
     state: the design's state before the step ('stock', 'test1' .. 'test4'), with '|<hex>' appended while a refresh-loop
     switch bit is set. Returns (text, new state)."""
-    name = {"stock": "READY (stock)", **{"test%d" % n: "READY (test %d applied)" % n for n in (1, 2, 3, 4, 5, 6)}}
+    name = {"stock": "READY (stock)", **{"test%d" % n: "READY (test %d applied)" % n for n in range(1, 9)}}
     state, _bar, gtxt = state.partition("|")
     guard = int(gtxt or "0", 16)
     gline = lambda g: "GUARD flag byte 0x%02x  refresh loop %s" % (g, "OFF" if g & 2 else "on, NO FORCED RESTART" if g & 0x40 else "STOCK")   # noqa: E731
@@ -708,8 +720,8 @@ def emulator():
             raise AssertionError("emulated helper: %s" % r.bad)
         mem["m"] = bytes(cam.mem)
         res = b"".join(bytes(v) for v in cam.created.values())
-        v = re.findall(rb"VERDICT READY \((stock|test [1-6] applied)\)", res)
-        st = {b"stock": "stock", **{b"test %d applied" % n: "test%d" % n for n in (1, 2, 3, 4, 5, 6)}}.get(v[-1] if v else b"", state)
+        v = re.findall(rb"VERDICT READY \((stock|test [1-8] applied)\)", res)
+        st = {b"stock": "stock", **{b"test %d applied" % n: "test%d" % n for n in range(1, 9)}}.get(v[-1] if v else b"", state)
         return res, st
     return run
 
@@ -910,7 +922,7 @@ def main():
         print("Nothing was sent to any device.")
         return
     if not args.step:
-        parser.error("name the step: dump, test1, test2, test3, test4, test5, test6, norestart, nocheck or putback")
+        parser.error("name the step: dump, test1 to test8, norestart, nocheck or putback")
     lib = library(args.step)
     if args.dry_run:
         lines, _s, _sim = dry_run_lines(args.step)

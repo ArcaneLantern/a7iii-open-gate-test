@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build the eight A7 III kit-2 helper libraries (m3og.c, one per level) and print their SHA-256.
-#   bash build_m3og.sh            -> libJit_m3og_{dump,test1,test2,test3,test4,test5,test6,putback,norestart,nocheck}.so
+#   bash build_m3og.sh            -> libJit_m3og_{dump,test1,test2,test3,test4,test5,test6,test7,test8,putback,norestart,nocheck}.so
 # Target: 32-bit ARM (ARMv7-A, Cortex-A5 class, ARM state, soft-float calls, no unaligned access), the flags of the
 # original A7S tools on the same platform family (A7s Claude tools/a7s_poke/build_and_test.sh), as a shared object with
 # no imports and no libc. Needs zig (python -m ziglang, pinned 0.13.0).
@@ -14,7 +14,7 @@ if [ -n "${ZIG_PYTHON:-}" ]; then PY="$ZIG_PYTHON"
 elif [ -x "$H/../../../../a7iv_map/work/venv_zig/Scripts/python.exe" ]; then PY="$H/../../../../a7iv_map/work/venv_zig/Scripts/python.exe"
 else PY="python3"; fi
 cd "$H"
-for pair in 1:dump 11:test1 21:test2 22:test3 23:test4 24:test5 25:test6 31:putback 41:norestart 42:nocheck; do
+for pair in 1:dump 11:test1 21:test2 22:test3 23:test4 24:test5 25:test6 26:test7 27:test8 31:putback 41:norestart 42:nocheck; do
   L="${pair%%:*}"; N="${pair##*:}"
   "$PY" -m ziglang cc -target arm-linux-gnueabi -mcpu=cortex_a5-neon-vfp2-vfp3-vfp4 -marm -mno-unaligned-access \
     -std=gnu11 -O1 -Wall -Wextra -Werror -fPIC -shared -nostdlib -ffreestanding -fno-builtin -fno-stack-protector \
@@ -22,7 +22,7 @@ for pair in 1:dump 11:test1 21:test2 22:test3 23:test4 24:test5 25:test6 31:putb
     -Wl,-soname,libJit.so -Wl,--no-undefined -Wl,-z,now -Wl,--build-id=none -Wl,-z,max-page-size=4096 -g0 -s \
     -DLEVEL=$L m3og.c -o "libJit_m3og_$N.so"
 done
-for f in libJit_m3og_dump.so libJit_m3og_test1.so libJit_m3og_test2.so libJit_m3og_test3.so libJit_m3og_test4.so libJit_m3og_test5.so libJit_m3og_test6.so libJit_m3og_putback.so libJit_m3og_norestart.so libJit_m3og_nocheck.so; do
+for f in libJit_m3og_dump.so libJit_m3og_test1.so libJit_m3og_test2.so libJit_m3og_test3.so libJit_m3og_test4.so libJit_m3og_test5.so libJit_m3og_test6.so libJit_m3og_test7.so libJit_m3og_test8.so libJit_m3og_putback.so libJit_m3og_norestart.so libJit_m3og_nocheck.so; do
   if command -v sha256sum >/dev/null 2>&1; then s=$(sha256sum "$f" | cut -d' ' -f1); else s=$(shasum -a 256 "$f" | cut -d' ' -f1); fi
   echo "$s $(wc -c < "$f" | tr -d ' ') $f"
 done

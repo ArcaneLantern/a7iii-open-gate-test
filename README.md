@@ -1,6 +1,23 @@
 # A7 III open-gate test kits (firmware 4.04)
 
-## Kit 2 v8 (2026-11-27): open-gate tests and debug dump
+## Kit 2 v9 (2026-11-27): open-gate tests and debug dump
+
+**v9, after the v8 run.** Test 6 (test 3 with the first sensor row at 281) recorded the same frame as tests 3 and 5: picture rows 0 to 2136, black to 2155, four strip rows. So the first row does not matter, and the reading that the last sensor row is pinned is wrong.
+
+Four clips (tests 3, 4, 5, 6) now agree on one count: the stream holds the stock 3426 head lines plus half the added rows. That is the same number as (our line-pair count + the stock line-pair count) − 10 lines: 1764 + 1718 − 10 = 3472 for test 3, 1796 + 1718 − 10 = 3504 for test 4. One new count plus one stock count. Two things were always raised by that same amount, so either could be the one with a stale twin:
+
+| Step | What is doubled | Whole frame if |
+| --- | --- | --- |
+| test 7 | the timing pair's line count: 1810 instead of 1764 (period 815 / 781 to keep the blank) | a stock copy of that count is still used somewhere (1810 + 1718 − 10 = 3518 lines) |
+| test 8 | the sensor's row-count register: 1798 instead of 1752 (3596 rows from row 327) | a second sensor row count stays at 1706 (1798 + 1706 = 3504 rows) |
+
+Each is otherwise test 3. If neither gives a whole frame, the measured last row of each clip still says which of the two moves it.
+
+A second tester's test 6 run could not be used: `norestart` was not run, so the camera restarted in movie mode and the dump reads stock.
+
+**Tester steps: [K2_TEST.md](K2_TEST.md).**
+
+### Kit 2 v8 (2026-11-27): the first row
 
 **v8, after the v7 run.** Test 5 (test 3 plus the size row) wrote cleanly and recorded the same frame as test 3: picture rows 0 to 2136, black to 2155, four strip rows. The refresh loop ran as before (129 retries). So the size row does not set the last row, and that idea is closed.
 
@@ -80,7 +97,7 @@ The firmware shows a likely cause. Test 2 made the front-end records 624 lines t
 
 **Tester steps: [K2_TEST.md](K2_TEST.md).** Everything is changed only in the camera's working memory (RAM). The put-back step, a restart, or a battery pull undoes it.
 
-Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built ten times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
+Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built twelve times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
 
 | Step | Launcher | Picture rows | Squeeze | Line period (59.94 / 50 system) | Line rate above stock |
 | --- | --- | --- | --- | --- | --- |
@@ -115,11 +132,11 @@ The test design (`og_m3_v2`) comes from the 4.04 firmware:
 - The front-end record of the 4K full-frame mode holds 65 height fields and the vertical scaler step.
 - The camera core's drive table holds the cycle pair. In every movie and live-view mode that has one, its line count covers the whole sensor frame and the pair fits inside the frame time. The new line periods leave the gap the 50 system leaves in stock.
 - The firmware's own code, run in an emulator, programs the new window and builds the drive table from the new pair. The one extra byte it changes is written too.
-- The ten helper builds were run in an emulator against the 4.04 memory image: 119 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, the two switch steps (one bit each, other bits kept, cleared by put back), and a full application log staying under the RAM disk's size.
+- The twelve helper builds were run in an emulator against the 4.04 memory image: 141 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, the two switch steps (one bit each, other bits kept, cleared by put back), and a full application log staying under the RAM disk's size.
 
 What is not known: whether the pair is the only thing the camera core needs, and whether the front end keeps up with the shorter line period. If a test restarts the camera, the dump taken right after now includes the application log, where the firmware writes which check gave up.
 
-On the A7 III so far: v1 confirmed the location and wrote nothing. v2 test 1 passed; v2 test 2 restarted the camera. v3 tests 2 to 4 (second tester, 50 system) each gave a picture for about a second, then the forced restart. v4 (first tester, test 4): no restart with the switch set, but a stuttering picture, and a jittery dark one with the loop off. v5 (first tester): the timing read worked, see the table at the top. v6 test 3 (first tester): still stutters; the clips show the picture valid for half the added rows only. v7 test 5 (first tester): the same frame as test 3, so the size row is not it. The v8 test 6 has not run yet.
+On the A7 III so far: v1 confirmed the location and wrote nothing. v2 test 1 passed; v2 test 2 restarted the camera. v3 tests 2 to 4 (second tester, 50 system) each gave a picture for about a second, then the forced restart. v4 (first tester, test 4): no restart with the switch set, but a stuttering picture, and a jittery dark one with the loop off. v5 (first tester): the timing read worked, see the table at the top. v6 test 3 (first tester): still stutters; the clips show the picture valid for half the added rows only. v7 test 5 (first tester): the same frame as test 3, so the size row is not it. v8 test 6 (first tester): the same frame again, so the first row does not matter. The v9 tests 7 and 8 have not run yet.
 
 Commands, from `windows` (after `setup.cmd`):
 
@@ -226,4 +243,4 @@ On the first tester's camera, the service-mode login and `READ_HASP` worked (kit
 
 ## Licence and third-party code
 
-`windows/tools/third_party/sony-pmca-re` holds the unmodified USB transport files of [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE), pinned by checksum (`PINNED.json`). The `CT1_usb_first_contact` scripts are the A7 IV / A7S III kits' guarded USB layer, copied unchanged (`PROVENANCE.json`). No Sony firmware file is included. Kit 1 carries only sizes and checksums. Kit 2's helper (`m3og_design.h`, and the ten libraries built from it) carries the 4.04 contents of the three small tables it checks and changes: the sensor register list (5,496 bytes), two front-end records (1,344 bytes each) and two 8-byte timing rows, plus checksums of two code ranges and 16 pages.
+`windows/tools/third_party/sony-pmca-re` holds the unmodified USB transport files of [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE), pinned by checksum (`PINNED.json`). The `CT1_usb_first_contact` scripts are the A7 IV / A7S III kits' guarded USB layer, copied unchanged (`PROVENANCE.json`). No Sony firmware file is included. Kit 1 carries only sizes and checksums. Kit 2's helper (`m3og_design.h`, and the twelve libraries built from it) carries the 4.04 contents of the three small tables it checks and changes: the sensor register list (5,496 bytes), two front-end records (1,344 bytes each) and two 8-byte timing rows, plus checksums of two code ranges and 16 pages.
