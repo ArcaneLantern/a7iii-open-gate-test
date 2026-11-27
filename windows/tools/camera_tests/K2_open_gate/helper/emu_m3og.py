@@ -27,7 +27,7 @@ ROOT = HERE.parents[2]
 AVCAM = ROOT / 'work' / 'extracted' / 'a7m3_404' / '0700_part_image' / 'dev' / 'nflasha3' / 'av-cam.bin'
 KEMCO = ROOT / 'work' / 'extracted' / 'a7m3_404' / 'update' / '0800_appli' / 'setting' / 'kemco.txt'
 DESIGN = ROOT / 'modding' / 'designs' / 'og_m3_v2.json'
-LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'putback', 'norestart', 'nocheck')}
+LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'test5', 'putback', 'norestart', 'nocheck')}
 
 BASE, STACK, STACK_SZ, RET = 0x10000000, 0x7E000000, 0x100000, 0x7F000000
 AV_PHYS, AV_END, KLOG_PHYS, KLOG_LEN = 0x035C6000, 0x048C6000, 0x035A5000, 0x20000
@@ -61,6 +61,11 @@ class Camera:
             self.mem[orow + 8:orow + 12] = struct.pack('<I', 1)
             self.mem[row + 0x68:row + 0x70] = struct.pack('<II', *t['stock_pair'])
             self.mem[int(t['derived_byte_va'], 16) - 0x60000000 - MEM_BASE] = t['stock_derived_byte']
+            self.mem[row + 0x50:row + 0x54] = bytes.fromhex(t['size_rt_stock'])
+            a = int(t['readout_rt_va'], 16) - 0x60000000 - MEM_BASE
+            row1c = bytearray(bytes.fromhex(t['readout_rt_stock']))
+            row1c[6:12] = struct.pack('<3H', 3564, 2376, 4283)     # words 3 to 5 are live on a camera (both testers' stock dumps)
+            self.mem[a:a + 0x12] = row1c
         self.system = system
         cmdline = ' '.join(ln.strip() for ln in KEMCO.read_text().splitlines()[1:] if ln.strip())
         self.files = {'/proc/cmdline': cmdline.encode() + b'\n', '/proc/version': b'Linux version 3.0.27 (simulated)\n',
@@ -268,7 +273,8 @@ def main():
     def blocks(system):
         t = tb[system]
         return [(P(0x646F0320), 5496), (P(0x63E0D798), 0x540), (P(0x63E12B98), 0x540),
-                (P(t['rom_pair_va']), 8), (P(t['runtime_pair_va']), 8), (P(t['derived_byte_va']), 1)]
+                (P(t['rom_pair_va']), 8), (P(t['runtime_pair_va']), 8), (P(t['derived_byte_va']), 1),
+                (P(t['size_rom_va']), 4), (P(t['size_rt_va']), 4), (P(t['readout_rt_va']) + 4, 2), (P(t['readout_rt_va']) + 0xE, 2)]
 
     def diff(m, ref=None):
         ref = stock if ref is None else ref
@@ -302,14 +308,14 @@ def main():
         print(text)
         return
 
-    N_MEM = 18 + 6                                                    # 18 read-only ranges + the six blocks
+    N_MEM = 18 + 10                                                   # 18 read-only ranges + the ten blocks
     # 1. dump on a stock camera
     cam = Camera()
     r, t = run('dump', cam)
     check(not r.bad, 'dump: runs to the end (%s)' % (r.bad or 'ok'))
     check('VERDICT READY (stock)' in t and t.count('SAME as the 4.04 file') == 3 and t.count('  matches 4.04') == 16,
           'dump: LIRO header + 2 code ranges SAME, 16 image pages reported, verdict READY (stock)')
-    check('tv system 59.94 (slot 28)' in t and t.count('  STOCK\n') == 6, 'dump: TV system 59.94 found, six blocks STOCK')
+    check('tv system 59.94 (slot 28)' in t and t.count('  STOCK\n') == 10, 'dump: TV system 59.94 found, ten blocks STOCK')
     check(not cam.writes and diff(cam.mem) == [], 'dump: memory untouched, no pwrite')
     check('0123456789abcdef' not in t and 'not copied by m3og' in t, 'dump: the cpuinfo Serial line is not copied')
     check('12:34:56:ab:cd:ef' not in t and 'xx:xx:xx:xx:xx:xx' in t and 'liro: resume (WBI)' in t, 'dump: kernel log copied as text, MAC address blanked')
@@ -360,12 +366,24 @@ def main():
     # 3. test 2 on top of test 1; then tests 2, 3, 4 on stock
     r, t = run('test2', cam_from(mem['test1']))
     check(not r.bad and 'DONE: ' in t and 'READY (test 2 applied)' in t, 'test2 after test1: DONE, READY (test 2 applied)')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4')):
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5')):
         cam = Camera()
         r, t = run(name, cam)
         dn = diff(cam.mem)
         check(not r.bad and 'DONE: ' in t and ('READY (test %d applied)' % n) in t and in_blocks(dn),
-              '%s on stock: DONE, READY (test %d applied); %d bytes changed, all inside the six blocks' % (name, n, len(dn)))
+              '%s on stock: DONE, READY (test %d applied); %d bytes changed, all inside the ten blocks' % (name, n, len(dn)))
+        if 'size' in steps[name]:
+            sz = steps[name]['size']['59.94']
+            t5 = tb['59.94']
+            check(struct.unpack_from('<I', cam.mem, P(t5['size_rom_va']))[0] == sz['inner_rows']
+                  and bytes(cam.mem[P(t5['size_rt_va']):P(t5['size_rt_va']) + 4]).hex() == sz['size_rt']
+                  and list(struct.unpack_from('<9H', cam.mem, P(t5['readout_rt_va']))) == sz['readout_words'][:3] + [3564, 2376, 4283] + sz['readout_words'][6:],
+                  '%s: size row inner height %d in the ROM row and the runtime entry, read-out words 2 and 7 = %d, the live words 3 to 5 untouched' % (name, sz['inner_rows'], sz['readout_words'][2]))
+        else:
+            t5 = tb['59.94']
+            check(struct.unpack_from('<I', cam.mem, P(t5['size_rom_va']))[0] == 3376
+                  and list(struct.unpack_from('<9H', cam.mem, P(t5['readout_rt_va']))) == t5['readout_words_stock'][:3] + [3564, 2376, 4283] + t5['readout_words_stock'][6:],
+                  '%s: the size row and the read-out row stay stock' % name)
         check(sensor_ok(cam.mem, name) and records_ok(cam.mem, name) and timing_ok(cam.mem, name, '59.94'),
               '%s: sensor window %d rows from %d, 2 x %d record words, timing pair %d / %d and derived byte hold the design values' % (
                   name, steps[name]['rows'], steps[name]['first_row'], steps[name]['record_words_changed'],
@@ -383,20 +401,24 @@ def main():
     r, t = run('putback', cam)
     check('READY (stock)' in t and bytes(cam.mem) == pal_stock, 'putback on the 50-system camera: memory as before')
     # 4. one test over another refuses
-    for over, under in (('test1', 'test2'), ('test3', 'test2'), ('test2', 'test4'), ('test4', 'test3')):
+    for over, under in (('test1', 'test2'), ('test3', 'test2'), ('test2', 'test4'), ('test4', 'test3'), ('test4', 'test5'), ('test3', 'test5')):
         cam = cam_from(mem[under])
         r, t = run(over, cam)
         check(not r.bad and 'run the put-back first' in t and not cam.writes and bytes(cam.mem) == mem[under],
               '%s over %s: NOT DONE, nothing written' % (over, under))
     # 5. put back
-    for name in ('test1', 'test2', 'test3', 'test4'):
+    for name in ('test1', 'test2', 'test3', 'test4', 'test5'):
         cam = cam_from(mem[name])
         r, t = run('putback', cam)
         check(not r.bad and 'DONE: ' in t and 'READY (stock)' in t and bytes(cam.mem) == bytes(stock), 'putback after %s: memory equals 4.04 again' % name)
     cam = Camera()
     r, t = run('putback', cam)
     check('NOTHING TO DO' in t and not cam.writes, 'putback on stock: NOTHING TO DO, no write')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4')):
+    cam = cam_from(mem['test3'])
+    r, t = run('test5', cam)
+    check(not r.bad and 'DONE: ' in t and 'READY (test 5 applied)' in t and bytes(cam.mem) == mem['test5'],
+          'test5 after test3: DONE, adds only the size blocks, READY (test 5 applied)')
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5')):
         r, t = run('dump', cam_from(mem[name]))
         check(('VERDICT READY (test %d applied)' % n) in t, 'dump after %s: READY (test %d applied)' % (name, n))
     # 5b. the second camera run's state (v2 test 2: sensor + records, timing pair still stock) is reported as partly applied

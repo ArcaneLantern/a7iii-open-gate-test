@@ -443,46 +443,72 @@ static const u8 A13[3] = {
 static const u8 A14[1] = {
     0x26,
 };
-static const u8 A15[12] = {
+static const u8 A15[3] = {
+    0x00, 0x00, 0x8c,
+};
+static const u8 A16[4] = {
+    0x30, 0x0d, 0x00, 0x00,
+};
+static const u8 A17[6] = {
+    0x00, 0x00, 0x4a, 0x01, 0x00, 0x19,
+};
+static const u8 A18[2] = {
+    0x9e, 0x18,
+};
+static const u8 A19[12] = {
     0x00, 0x00, 0xb8, 0x01, 0x00, 0x02, 0x04, 0x00, 0xee, 0x05, 0x00, 0x07,
 };
-static const u8 A16[6] = {
+static const u8 A20[6] = {
     0x00, 0x00, 0x21, 0x04, 0x00, 0xe4,
 };
-static const u8 A17[9] = {
+static const u8 A21[9] = {
     0x00, 0x00, 0x13, 0x04, 0x00, 0x04, 0x05, 0x00, 0x07,
 };
-static const u8 A18[8] = {
+static const u8 A22[8] = {
     0x37, 0x03, 0x00, 0x00, 0xb6, 0x06, 0x00, 0x00,
 };
-static const u8 A19[3] = {
+static const u8 A23[3] = {
     0x00, 0x00, 0x20,
 };
-static const u8 A20[3] = {
+static const u8 A24[3] = {
     0x00, 0x00, 0x25,
 };
-static const u8 A21[3] = {
+static const u8 A25[3] = {
     0x00, 0x00, 0x24,
 };
-#define N_STEPS 4
+static const u8 A26[6] = {
+    0x00, 0x00, 0x50, 0x01, 0x00, 0x19,
+};
+static const u8 A27[2] = {
+    0xa4, 0x18,
+};
+#define N_STEPS 5
 #define N_COMMON 3
-#define N_SYSBLK 3
+#define N_SYSBLK 7
 static const struct block BLK_COMMON[N_COMMON] = {
-    {"reglist", 0x646f0320u, 5496, A3, {A0, A0, A1, A2}, {7, 7, 5, 5}},
-    {"fe_rec_0a", 0x63e0d798u, 1344, A7, {0, A4, A5, A6}, {0, 128, 66, 70}},
-    {"fe_rec_19", 0x63e12b98u, 1344, A8, {0, A4, A5, A6}, {0, 128, 66, 70}},
+    {"reglist", 0x646f0320u, 5496, A3, {A0, A0, A1, A2, A1}, {7, 7, 5, 5, 5}},
+    {"fe_rec_0a", 0x63e0d798u, 1344, A7, {0, A4, A5, A6, A5}, {0, 128, 66, 70, 66}},
+    {"fe_rec_19", 0x63e12b98u, 1344, A8, {0, A4, A5, A6, A5}, {0, 128, 66, 70, 66}},
 };
 /* [0] = 59.94 system (slot 28, drive 0x1f), [1] = 50 system (slot 27, drive 0x89) */
 static const struct block BLK_SYS[2][N_SYSBLK] = {
   {
-    {"timing_rom_ntsc", 0x63e21204u, 8, A12, {0, A9, A10, A11}, {0, 4, 1, 3}},
-    {"timing_rt_ntsc", 0x64200d88u, 8, A12, {0, A9, A10, A11}, {0, 4, 1, 3}},
-    {"timing_derived_ntsc", 0x64201b6cu, 1, A14, {0, A13, 0, 0}, {0, 1, 0, 0}},
+    {"timing_rom_ntsc", 0x63e21204u, 8, A12, {0, A9, A10, A11, A10}, {0, 4, 1, 3, 1}},
+    {"timing_rt_ntsc", 0x64200d88u, 8, A12, {0, A9, A10, A11, A10}, {0, 4, 1, 3, 1}},
+    {"timing_derived_ntsc", 0x64201b6cu, 1, A14, {0, A13, 0, 0, 0}, {0, 1, 0, 0, 0}},
+    {"size_rom_ntsc", 0x63e220ccu, 4, A16, {0, 0, 0, 0, A15}, {0, 0, 0, 0, 1}},
+    {"size_rt_ntsc", 0x64200d70u, 4, A16, {0, 0, 0, 0, A15}, {0, 0, 0, 0, 1}},
+    {"readout_a_ntsc", 0x6460bd5cu, 2, A18, {0, 0, 0, 0, A17}, {0, 0, 0, 0, 2}},
+    {"readout_b_ntsc", 0x6460bd66u, 2, A18, {0, 0, 0, 0, A17}, {0, 0, 0, 0, 2}},
   },
   {
-    {"timing_rom_pal", 0x63e21654u, 8, A18, {0, A15, A16, A17}, {0, 4, 2, 3}},
-    {"timing_rt_pal", 0x64200d10u, 8, A18, {0, A15, A16, A17}, {0, 4, 2, 3}},
-    {"timing_derived_pal", 0x64201b3cu, 1, A14, {0, A19, A20, A21}, {0, 1, 1, 1}},
+    {"timing_rom_pal", 0x63e21654u, 8, A22, {0, A19, A20, A21, A20}, {0, 4, 2, 3, 2}},
+    {"timing_rt_pal", 0x64200d10u, 8, A22, {0, A19, A20, A21, A20}, {0, 4, 2, 3, 2}},
+    {"timing_derived_pal", 0x64201b3cu, 1, A14, {0, A23, A24, A25, A24}, {0, 1, 1, 1, 1}},
+    {"size_rom_pal", 0x63e22080u, 4, A16, {0, 0, 0, 0, A15}, {0, 0, 0, 0, 1}},
+    {"size_rt_pal", 0x64200cf8u, 4, A16, {0, 0, 0, 0, A15}, {0, 0, 0, 0, 1}},
+    {"readout_a_pal", 0x6460bd4au, 2, A27, {0, 0, 0, 0, A26}, {0, 0, 0, 0, 2}},
+    {"readout_b_pal", 0x6460bd54u, 2, A27, {0, 0, 0, 0, A26}, {0, 0, 0, 0, 2}},
   },
 };
 #define T14_VA 0x64200000u

@@ -17,6 +17,10 @@
  *             the stock 3436 lines; the camera lost its output sync and restarted itself (M3-F039..F041).
  *   level 22  TEST 3. The same three parts for half the extra height (3724 rows from row 217, heights +312).
  *   level 23  TEST 4. The same for a quarter (3568 rows from row 295, heights +156): the smallest change of line rate.
+ *   level 24  TEST 5 (v7). Test 3's bytes (92 more rows, stock line period) plus the size row's inner height in three more
+ *             blocks of the TV-system slot: the ROM size row, the runtime entry and the runtime read-out row the
+ *             firmware derives from it. Two clips showed the valid picture ending at the stock last sensor row
+ *             (M3-F046); this tests whether the size row is what sets that row.
  *   level 31  PUT BACK. Writes the 4.04 bytes back wherever a test changed them, and clears the two switch bits below.
  *   level 41  NO RESTART (v4). Sets bit 0x40 of the firmware's own switch byte for its output-sync refresh loop: the loop
  *             keeps retrying but never forces the restart. One byte.
@@ -53,19 +57,19 @@ typedef unsigned long long u64;
 #ifndef LEVEL
 #define LEVEL 1
 #endif
-#if LEVEL != 1 && LEVEL != 11 && LEVEL != 21 && LEVEL != 22 && LEVEL != 23 && LEVEL != 31 && LEVEL != 41 && LEVEL != 42
-#error "LEVEL must be 1, 11, 21, 22, 23, 31, 41 or 42"
+#if LEVEL != 1 && LEVEL != 11 && LEVEL != 21 && LEVEL != 22 && LEVEL != 23 && LEVEL != 24 && LEVEL != 31 && LEVEL != 41 && LEVEL != 42
+#error "LEVEL must be 1, 11, 21, 22, 23, 24, 31, 41 or 42"
 #endif
 #define GUARD_ONLY (LEVEL == 41 || LEVEL == 42)
 #define WRITES (LEVEL != 1)
 
 struct ident { const char *name; u32 va; u32 len; u8 sha[32]; };
 /* patch[n]: the bytes of test n+1 that differ from stock, npatch[n] triplets {offset low, offset high, value} */
-struct block { const char *name; u32 va; u32 len; const u8 *stock; const u8 *patch[4]; u16 npatch[4]; };
+struct block { const char *name; u32 va; u32 len; const u8 *stock; const u8 *patch[5]; u16 npatch[5]; };
 struct range { const char *name; u32 va; u32 len; };
 #include "m3og_design.h"
 
-#define VERSION "m3og_v4"
+#define VERSION "m3og_v7"
 #define KLOG_PHYS 0x035A5000u
 #define KLOG_LEN 0x20000u
 #define ALOG_PHYS 0x03524FC0u            /* kernel command line: alog.addr=0x03524FC0 alog.size=0x60040 */
@@ -396,8 +400,8 @@ static int tv_sys = -1;
 static u8 cur[N_BLOCKS][MAXB];
 static u8 tgt[N_STEPS][N_BLOCKS][MAXB];  /* the full bytes of each test, built from stock + patch when a block is taken */
 static u8 eq[N_BLOCKS];                 /* bit 0: every byte is the stock byte; bit n: every byte is test n's byte */
-enum { ST_STOCK, ST_T1, ST_T2, ST_T3, ST_T4, ST_MIXED, ST_OTHER, ST_UNREAD };
-static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "TEST3", "TEST4", "MIXED", "OTHER", "NOT READ"};
+enum { ST_STOCK, ST_T1, ST_T2, ST_T3, ST_T4, ST_T5, ST_MIXED, ST_OTHER, ST_UNREAD };
+static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "TEST3", "TEST4", "TEST5", "MIXED", "OTHER", "NOT READ"};
 
 static void take_block(int i, const struct block *b)
 {
@@ -490,13 +494,14 @@ static void verdict(int idok, const int st[N_BLOCKS])
     ps("VERDICT ");
     if (!idok) { ps("NOT READY (av-cam is not where or what the 4.04 file says)\n"); return; }
     if (n_blk != N_BLOCKS) { ps("NOT READY (the TV system slot of the 4K drive was not recognised)\n"); return; }
-    u32 all = 0x1f;
+    u32 all = 0x3f;
     for (int i = 0; i < N_BLOCKS; i++) all &= st[i] == ST_UNREAD ? 0 : eq[i];
     if (all & 1) ps("READY (stock)\n");
     else if (all & 2) ps("READY (test 1 applied)\n");
     else if (all & 4) ps("READY (test 2 applied)\n");
     else if (all & 8) ps("READY (test 3 applied)\n");
     else if (all & 16) ps("READY (test 4 applied)\n");
+    else if (all & 32) ps("READY (test 5 applied)\n");
     else ps("NOT READY (the design's bytes are partly applied or changed by something else)\n");
 }
 
@@ -600,6 +605,8 @@ static const u8 *target(int i)
     return tgt[2][i];
 #elif LEVEL == 23
     return tgt[3][i];
+#elif LEVEL == 24
+    return tgt[4][i];
 #else
     return B[i]->stock;
 #endif
@@ -693,6 +700,8 @@ static const char *const LEVEL_NAME =
     "test3";
 #elif LEVEL == 23
     "test4";
+#elif LEVEL == 24
+    "test5";
 #elif LEVEL == 41
     "norestart";
 #elif LEVEL == 42
