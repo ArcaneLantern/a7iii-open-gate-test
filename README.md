@@ -1,6 +1,23 @@
 # A7 III open-gate test kits (firmware 4.04)
 
-## Kit 2 v10 (2026-11-27): open-gate tests and debug dump
+## Kit 2 v11 (2026-11-27): open-gate tests and debug dump
+
+**v11, after the v10 run.** Test 9 removed the black bar and the strip under it in every frame. So the front end's stock frame was what caused them.
+
+The test 9 frame then ran out of time. The front end sends the frame one line every 11.6 µs and starts 1.64 ms after the frame start, so 3,451 lines fit before the next frame begins. The clip shows 3,453 arrived; test 9 asked for 3,518. The last 40 rows of the recorded frame were never written and show stale memory as coloured noise. Stock has only 25 lines to spare, and the design had kept the stock line period on purpose since v6.
+
+| Step | What it changes | What it tests |
+| --- | --- | --- |
+| test 11 | test 9 with the line period at 814 instead of 836, in the camera core's timing pair and in the front end's transfer list. The 3,518 lines then end 0.30 ms before the next frame, as stock's do. On a PAL camera test 9 already holds that value (801): the same bytes. | whether the missing rows were only a matter of time, and whether the stutter goes with them |
+
+- **The log copy is corrected.** v10's dump found both areas of the camera's own log where the kit computed them, then refused to copy them: it required a header word that changes while the camera runs. v11 checks the marker, the start address and the size.
+- **Test 10 is withdrawn.** It made the picture darker and put a brightness step between the left and right halves.
+- **Still open:** fine red-blue row stripes in every test clip since test 3. They have another cause.
+- **A limit this run showed:** the whole sensor height at 24p needs lines about 15 % shorter than stock, which is below what the front end's lists allow (761 words per line). Full open gate will need a longer frame time or a further change there.
+
+**Tester steps: [K2_TEST.md](K2_TEST.md).**
+
+### Kit 2 v10 (2026-11-27): the front end
 
 **v10, after the v9 run and a trace of the picture path.** Tests 7 and 8 recorded test 3's frame again, so neither the timing pair's line count nor the sensor's row count moves the cut.
 
@@ -115,7 +132,7 @@ The firmware shows a likely cause. Test 2 made the front-end records 624 lines t
 
 **Tester steps: [K2_TEST.md](K2_TEST.md).** Everything is changed only in the camera's working memory (RAM). The put-back step, a restart, or a battery pull undoes it.
 
-Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built fifteen times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
+Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built sixteen times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
 
 | Step | Launcher | Picture rows | Squeeze | Line period (59.94 / 50 system) | Line rate above stock |
 | --- | --- | --- | --- | --- | --- |
@@ -150,7 +167,7 @@ The test design (`og_m3_v2`) comes from the 4.04 firmware:
 - The front-end record of the 4K full-frame mode holds 65 height fields and the vertical scaler step.
 - The camera core's drive table holds the cycle pair. In every movie and live-view mode that has one, its line count covers the whole sensor frame and the pair fits inside the frame time. The new line periods leave the gap the 50 system leaves in stock.
 - The firmware's own code, run in an emulator, programs the new window and builds the drive table from the new pair. The one extra byte it changes is written too.
-- The fifteen helper builds were run in an emulator against the 4.04 memory image: 199 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, the two switch steps (one bit each, other bits kept, cleared by put back), and a full application log staying under the RAM disk's size.
+- The sixteen helper builds were run in an emulator against the 4.04 memory image: 220 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, the two switch steps (one bit each, other bits kept, cleared by put back), and a full application log staying under the RAM disk's size.
 
 What is not known: whether the pair is the only thing the camera core needs, and whether the front end keeps up with the shorter line period. If a test restarts the camera, the dump taken right after now includes the application log, where the firmware writes which check gave up.
 

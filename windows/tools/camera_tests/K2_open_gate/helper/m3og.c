@@ -31,7 +31,11 @@
  *             line count + 92 in the receiver, link, image, output-format and transfer generators of both channels,
  *             the two frame totals derived from them, and the transfer generator's cycle. No earlier test wrote them.
  *   level 29  TEST 10 (v10). Test 9 plus the front end's drive table: its twelve height words + 92.
- *             Tests 9 and 10 also set the no-restart bit (level 41) and the status-print bits (level 43) themselves.
+ *   level 30  TEST 11 (v11). Test 9 with the line period of the timing pair and of the front end's transfer generator
+ *             shortened so that the taller frame ends when the stock one does (814 instead of 836 on the 59.94
+ *             system; on the 50 system test 9 already holds that value, 801, and the two tests are the same bytes).
+ *             With test 9 the frame ran out of time 64 lines before its end (M3-F056).
+ *             Tests 9, 10 and 11 also set the no-restart bit (level 41) and the status-print bits (level 43) themselves.
  *   level 31  PUT BACK. Writes the 4.04 bytes back wherever a test changed them, and clears the switch bits below.
  *   level 41  NO RESTART (v4). Sets bit 0x40 of the firmware's own switch byte for its output-sync refresh loop: the loop
  *             keeps retrying but never forces the restart. One byte.
@@ -46,7 +50,9 @@
  * v10, dump: the camera core's own log lines. av-cam's print function sends each line to the kernel's log module, which
  * keeps them in RAM (log buffer at 0x03085000, laid out from /setting/ulogio.bin): subsystem 3, area 1 = the latest
  * 8 KB, area 3 = the first 40 KB since the camera started. Both are copied as text if their headers are where the
- * layout says (M3-F054).
+ * layout says (M3-F054). v11: the header check of v10 required a word that changes while the camera runs and so
+ * copied nothing (M3-F056); it now checks the marker, the start pointer and the size. The copy of the kernel's
+ * application log (alog) is gone: it was 14 bytes on every camera, and the library has to fit one upload packet.
  *
  * Memory: av-cam.bin runs from RAM at physical = link address - 0x60000000 (kernel command line: klog at 0x035A5000,
  * size 0x20000; av-cam's LIRO image follows at 0x035C6000; the reservation 0x02E68000 + 0x1A5E000 ends where av-cam's
@@ -76,31 +82,30 @@ typedef unsigned long long u64;
 #ifndef LEVEL
 #define LEVEL 1
 #endif
-#if LEVEL != 1 && LEVEL != 11 && !(LEVEL >= 21 && LEVEL <= 29) && LEVEL != 31 && LEVEL != 41 && LEVEL != 42 && LEVEL != 43
-#error "LEVEL must be 1, 11, 21 to 29, 31, 41, 42 or 43"
+#if LEVEL != 1 && LEVEL != 11 && !(LEVEL >= 21 && LEVEL <= 30) && LEVEL != 31 && LEVEL != 41 && LEVEL != 42 && LEVEL != 43
+#error "LEVEL must be 1, 11, 21 to 30, 31, 41, 42 or 43"
 #endif
 #define GUARD_ONLY (LEVEL == 41 || LEVEL == 42 || LEVEL == 43)
-/* v10: tests 9 and 10 also set the no-restart bit and the status-print bits themselves (one session instead of three) */
-#define TEST_SETS_FLAGS (LEVEL == 28 || LEVEL == 29)
-/* the test a level writes: test1 = 0, test2..test10 = 1..9 */
+/* v10: tests 9 to 11 also set the no-restart bit and the status-print bits themselves (one session instead of three) */
+#define TEST_SETS_FLAGS (LEVEL == 28 || LEVEL == 29 || LEVEL == 30)
+/* the test a level writes: test1 = 0, test2..test11 = 1..10 */
 #if LEVEL == 11
 #define TEST_IDX 0
-#elif LEVEL >= 21 && LEVEL <= 29
+#elif LEVEL >= 21 && LEVEL <= 30
 #define TEST_IDX (LEVEL - 20)
 #endif
 #define WRITES (LEVEL != 1)
 
 struct ident { const char *name; u32 va; u32 len; u8 sha[32]; };
-/* patch[n]: the bytes of test n+1 that differ from stock, npatch[n] triplets {offset low, offset high, value} */
-struct block { const char *name; u32 va; u32 len; const u8 *stock; const u8 *patch[10]; u16 npatch[10]; };
+/* poff[n]: where in PATCHES the bytes of test n+1 that differ from stock start; npatch[n] triplets {offset low,
+ * offset high, value} (v11: offsets into one table instead of a pointer each, to keep the library in one packet) */
+struct block { const char *name; u32 va; u32 len; const u8 *stock; u16 poff[11]; u16 npatch[11]; };
 struct range { const char *name; u32 va; u32 len; };
 #include "m3og_design.h"
 
-#define VERSION "m3og_v10"
+#define VERSION "m3og_v11"
 #define KLOG_PHYS 0x035A5000u
 #define KLOG_LEN 0x20000u
-#define ALOG_PHYS 0x03524FC0u            /* kernel command line: alog.addr=0x03524FC0 alog.size=0x60040 */
-#define ALOG_LEN 0x60040u
 #define RESULT_CAP (900u * 1024u)        /* /tmp_network is a 1024 KB tmpfs: the log copies stop here */
 #define FILE_CAP (64 * 1024)
 
@@ -439,11 +444,11 @@ static u8 tgt_pool[N_STEPS][POOL_STEP];
 #define CUR(i) (cur_pool + boff[i])
 #define TGT(n, i) (tgt_pool[n] + boff[i])
 static u16 eq[N_BLOCKS];                /* bit 0: every byte is the stock byte; bit n: every byte is test n's byte */
-#if N_STEPS != 10
-#error "the state names below are for ten tests"
+#if N_STEPS != 11
+#error "the state names below are for eleven tests"
 #endif
 enum { ST_STOCK, ST_T1, ST_MIXED = ST_T1 + N_STEPS, ST_OTHER, ST_UNREAD };
-static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "TEST3", "TEST4", "TEST5", "TEST6", "TEST7", "TEST8", "TEST9", "TEST10",
+static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "TEST3", "TEST4", "TEST5", "TEST6", "TEST7", "TEST8", "TEST9", "TEST10", "TEST11",
                                          "MIXED", "OTHER", "NOT READ"};
 
 static void take_block(int i, const struct block *b)
@@ -454,7 +459,7 @@ static void take_block(int i, const struct block *b)
     for (int n = 0; n < N_STEPS; n++) {
         memcpy(TGT(n, i), b->stock, b->len);
         for (u32 k = 0; k < b->npatch[n]; k++) {
-            const u8 *p = b->patch[n] + 3 * k;
+            const u8 *p = PATCHES + b->poff[n] + 3 * k;
             TGT(n, i)[p[0] | (u32)p[1] << 8] = p[2];
         }
     }
@@ -542,6 +547,10 @@ static void verdict(int idok, const int st[N_BLOCKS])
     u32 all = (2u << N_STEPS) - 1;
     for (int i = 0; i < N_BLOCKS; i++) all &= st[i] == ST_UNREAD ? 0 : eq[i];
     if (all & 1) { ps("READY (stock)\n"); return; }
+#ifdef TEST_IDX
+    /* two tests can be the same bytes on one TV system (9 and 11 on the 50 system): a test level names its own */
+    if (all & (2u << TEST_IDX)) { ps("READY (test "); pdec((u32)TEST_IDX + 1); ps(" applied)\n"); return; }
+#endif
     for (int n = 0; n < N_STEPS; n++)
         if (all & (2u << n)) { ps("READY (test "); pdec((u32)n + 1); ps(" applied)\n"); return; }
     ps("NOT READY (the design's bytes are partly applied or changed by something else)\n");
@@ -631,17 +640,18 @@ static void dump_log(const char *name, u32 phys, u32 len, int squeeze)
 
 static u32 le32(const u8 *p) { return p[0] | (u32)p[1] << 8 | (u32)p[2] << 16 | (u32)p[3] << 24; }
 
-/* v10: one area of the camera core's log (see the top of this file). The log module's area header is 0x24 bytes and
- * holds the data size at +8 and the data size - 1 at +12 (osal_ulogio.ko, ulogio_lbm_init); the area is copied as text
- * only if both are what the layout says. */
+/* v10: one area of the camera core's log (see the top of this file). The log module's area header is 0x24 bytes
+ * (osal_ulogio.ko, ulogio_lbm_init). v11: on a camera it reads "RBUF", the address of the area's data as av-cam sees
+ * it (physical + PHYS_DELTA) at +4, and the data size at +8; the word at +12 counts down as lines arrive (run 13). The
+ * area is copied as text only if those three are what the layout says. */
 static void dump_camlog(const char *name, u32 phys, u32 size)
 {
     u8 h[0x24];
     ps("camlog area "); ps(name); ps(" phys "); px(phys); ps(" size "); px(size);
     if (!mem_rd(phys, h, sizeof h)) { ps("  HEADER NOT READ\n"); return; }
     ps(" header "); pbytes(h, sizeof h);
-    if (le32(h + 8) != size - 0x24 || le32(h + 12) != size - 0x25) { ps("  NOT AS EXPECTED, not copied\n"); return; }
-    ps("  as expected\n");
+    if (le32(h) != 0x46554252u || le32(h + 4) != phys + 0x24 + PHYS_DELTA || le32(h + 8) != size - 0x24) { ps("  NOT AS EXPECTED, not copied\n"); return; }
+    ps("  as expected, written up to "); px(le32(h + 20) - le32(h + 4)); nl();
     dump_log(name, phys + 0x24, size - 0x24, 1);
 }
 
@@ -802,6 +812,8 @@ static const char *const LEVEL_NAME =
     "test9";
 #elif LEVEL == 29
     "test10";
+#elif LEVEL == 30
+    "test11";
 #elif LEVEL == 41
     "norestart";
 #elif LEVEL == 42
@@ -875,9 +887,6 @@ __attribute__((constructor, used)) static void m3og_main(void)
         dump_log("klog", KLOG_PHYS, KLOG_LEN, 0);
         /* v10: the camera core's own log lines, kept in RAM by the kernel's log module */
         dump_camlogs();
-        /* v3: the application log ring (kernel command line alog.addr / alog.size). av-cam's own messages go there:
-         * after a forced restart it should hold which check gave up ("Lost CAMOUT_V ...", "RCV overflow ..."). */
-        dump_log("alog", ALOG_PHYS, ALOG_LEN, 1);
 #endif
         sys_close(mem_fd);
     }

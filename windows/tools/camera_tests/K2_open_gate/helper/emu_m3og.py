@@ -28,7 +28,7 @@ ROOT = HERE.parents[2]
 AVCAM = ROOT / 'work' / 'extracted' / 'a7m3_404' / '0700_part_image' / 'dev' / 'nflasha3' / 'av-cam.bin'
 KEMCO = ROOT / 'work' / 'extracted' / 'a7m3_404' / 'update' / '0800_appli' / 'setting' / 'kemco.txt'
 DESIGN = ROOT / 'modding' / 'designs' / 'og_m3_v2.json'
-LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'putback', 'norestart', 'nocheck', 'dfelog')}
+LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'putback', 'norestart', 'nocheck', 'dfelog')}
 
 BASE, STACK, STACK_SZ, RET = 0x10000000, 0x7E000000, 0x100000, 0x7F000000
 AV_PHYS, AV_END, KLOG_PHYS, KLOG_LEN = 0x035C6000, 0x048C6000, 0x035A5000, 0x20000
@@ -60,7 +60,10 @@ class Camera:
                           ('last_lines', b'\x02\x00\x03\x00Lost CAMOUT_V now[9524 9524], camoutv[9523 9524], sgc2[12 345]\x00\x01\x02lens 11:22:33:44:55:66 ok\x00')):
             p = int(cl[key]['phys'], 16) - MEM_BASE
             size = cl[key]['size']
-            self.mem[p:p + 0x24] = struct.pack('<9I', 0x4C4F4741, 0xC8000000, size - 0x24, size - 0x25, 0xC8000000, 0xC8000000, 0xC8000000, 0, 0)
+            # as read from a camera (run 13): "RBUF", the data's address as av-cam sees it, the data size, a count that
+            # runs down as lines arrive, start / write / start pointers, 0x24, 0
+            start = int(cl[key]['phys'], 16) + 0x24 + 0x60000000
+            self.mem[p:p + 0x24] = struct.pack('<9I', 0x46554252, start, size - 0x24, size - 0x25 - 0xA86, start, start + len(text), start, 0x24, 0)
             self.mem[p + 0x24:p + 0x24 + len(text)] = text
         # the runtime drive tables are zero in the file: the firmware builds them at start for the active TV system.
         # The model fills in what the helper reads: HMAX of both 4K full-frame slots, the cycle pair and the derived byte.
@@ -348,20 +351,22 @@ def main():
     check(not cam.writes and diff(cam.mem) == [], 'dump: memory untouched, no pwrite')
     check('0123456789abcdef' not in t and 'not copied by m3og' in t, 'dump: the cpuinfo Serial line is not copied')
     check('12:34:56:ab:cd:ef' not in t and 'xx:xx:xx:xx:xx:xx' in t and 'liro: resume (WBI)' in t, 'dump: kernel log copied as text, MAC address blanked')
-    alog = t[t.index('== alog phys'):] if '== alog phys' in t else ''
-    check('S-Ele Refresh!' in alog and 'Lost CAMOUT_V now[vfc:5 frc:6]' in alog and 'aa:bb:cc:dd:ee:01' not in alog
-          and '.[IMG]' in alog and '..' not in alog.split('== end')[0],
-          'dump: application log copied as text, MAC address blanked, binary runs squeezed to one dot')
+    check('== alog' not in t and 'S-Ele Refresh!' not in t, 'dump: the kernel\'s application log (always empty on a camera) is no longer copied')
     check('== dir /sys/module/liro/parameters' in t and '= 0x035c6000' in t, 'dump: liro parameters listed with values')
     first = t[t.index('== camlog_first phys'):t.index('camlog area camlog_last')] if '== camlog_first phys' in t else ''
-    last = t[t.index('== camlog_last phys'):t.index('== alog phys')] if '== camlog_last phys' in t else ''
-    check(t.count('  as expected\n') == 3 and '[DrvSgc0Start]mode4,syncMode0,H525,V2860,VdNum1' in first and 'HVcyc: D0 20c0b2c T0 3430d6c' in first
+    last = t[t.index('== camlog_last phys'):t.index('== done')] if '== camlog_last phys' in t else ''
+    check(t.count('  as expected') == 3 and t.count('  as expected, written up to 0x') == 2 and '..' not in last.split('== end')[0] and '[DrvSgc0Start]mode4,syncMode0,H525,V2860,VdNum1' in first and 'HVcyc: D0 20c0b2c T0 3430d6c' in first
           and 'Lost CAMOUT_V now[9524 9524]' in last and '11:22:33:44:55:66' not in t and 'lens xx:xx:xx:xx:xx:xx ok' in last,
           'dump: both areas of the camera core\'s log found by their headers and copied as text, MAC address blanked')
     check('DFELOG flag byte 0x00  front-end status print off' in t and '== mem dfe_flags' in t and '== mem dfe_img0' in t and '== mem dfe_trs_ntsc' in t,
           'dump: the status-print flag reads off; the front end\'s lists are copied out')
     camh = Camera()
     p0 = int(design['camera_log']['first_lines']['phys'], 16) - MEM_BASE
+    camh.mem[p0 + 12:p0 + 16] = struct.pack('<I', 0x9599)               # the running count as the camera of run 13 held it
+    rh, t2 = run('dump', camh)
+    check(not rh.bad and '== camlog_first phys' in t2 and 'NOT AS EXPECTED' not in t2,
+          'dump: a log area whose running count has moved (what v10 refused on a camera) is copied')
+    camh = Camera()
     camh.mem[p0 + 8] ^= 0x10
     rh, t2 = run('dump', camh)
     check(not rh.bad and 'camlog area camlog_first' in t2 and 'NOT AS EXPECTED, not copied' in t2 and '== camlog_first phys' not in t2
@@ -391,17 +396,15 @@ def main():
         check(not r.bad and 'tv system NOT RECOGNISED' in t and 'NOT READY (the TV system slot' in t and not cam.writes
               and (name == 'dump' or 'NOT DONE: the TV system slot' in t),
               '%s with no recognisable TV-system slot: NOT READY, nothing written' % name)
-    # 1d. a full application log (every byte printable): the result stays under the 1 MB tmpfs and keeps its last line
+    # 1d. both camera-core log areas full of text (every byte printable): the result stays under the 1 MB tmpfs
     cam = Camera()
-    a0 = ALOG_PHYS - MEM_BASE
-    cam.mem[a0:a0 + ALOG_LEN] = (b'0123456789abcdefghijklmnopqrstuvwxyz ' * (ALOG_LEN // 37 + 1))[:ALOG_LEN]
-    for key in ('first_lines', 'last_lines'):                          # and both camera-core log areas full of text
+    for key in ('first_lines', 'last_lines'):
         p0, sz = int(design['camera_log'][key]['phys'], 16) - MEM_BASE, design['camera_log'][key]['size']
         cam.mem[p0 + 0x24:p0 + sz] = (b'camera core line 0123456789 ' * (sz // 28 + 1))[:sz - 0x24]
     r, t = run('dump', cam)
     size = sum(len(v) for v in cam.created.values())
     check(not r.bad and size < 1024 * 1024 and t.rstrip().split('\n')[-1].startswith('== done') and t.count('== mem ') == N_MEM,
-          'dump with a full application log: %d bytes, under the 1 MB RAM disk, done line present' % size)
+          'dump with both camera log areas full: %d bytes, under the 1 MB RAM disk, done line present' % size)
     # 2. test 1 on stock
     cam = Camera()
     r, t = run('test1', cam)
@@ -413,7 +416,7 @@ def main():
     # 3. test 2 on top of test 1; then tests 2, 3, 4 on stock
     r, t = run('test2', cam_from(mem['test1']))
     check(not r.bad and 'DONE: ' in t and 'READY (test 2 applied)' in t, 'test2 after test1: DONE, READY (test 2 applied)')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10')):
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11')):
         cam = Camera()
         r, t = run(name, cam)
         dn = diff(cam.mem)
@@ -463,17 +466,24 @@ def main():
           and bytes(cam.mem[P(trs_n['va']):P(trs_n['va']) + trs_n['len']]) == bytes(pal_stock[P(trs_n['va']):P(trs_n['va']) + trs_n['len']])
           and struct.unpack_from('<I', cam.mem, P(trs_p['va']) + 8 * 3 + 4)[0] == (800 << 16 | 3528),
           'test9 on a 50-system camera: DONE; its transfer list holds 800 / 3528 and the 59.94 list is not touched')
-    cam = cam_from(bytes(cam.mem), system='50')
+    pal_t9 = bytes(cam.mem)
+    cam = cam_from(pal_stock, system='50')
+    r, t = run('test11', cam)
+    check(not r.bad and 'DONE: ' in t and bytes(cam.mem) == pal_t9 and 'READY (test 11 applied)' in t.split('after:')[-1],
+          'test11 on a 50-system camera: the same bytes as test9 there (pair 801 / 1764), and the step names itself')
+    r, t = run('dump', cam_from(pal_t9, system='50'))
+    check('VERDICT READY (test 9 applied)' in t, 'dump after test11 on a 50-system camera: says test 9 (the same bytes)')
+    cam = cam_from(pal_t9, system='50')
     r, t = run('putback', cam)
     check('READY (stock)' in t and bytes(cam.mem) == pal_stock, 'putback after test9 on the 50-system camera: memory as before')
     # 4. one test over another refuses
-    for over, under in (('test1', 'test2'), ('test3', 'test2'), ('test2', 'test4'), ('test4', 'test3'), ('test4', 'test5'), ('test3', 'test5'), ('test6', 'test3'), ('test3', 'test6'), ('test5', 'test6'), ('test7', 'test3'), ('test8', 'test7'), ('test3', 'test8'), ('test3', 'test9'), ('test9', 'test10'), ('test8', 'test9'), ('test9', 'test4')):
+    for over, under in (('test1', 'test2'), ('test3', 'test2'), ('test2', 'test4'), ('test4', 'test3'), ('test4', 'test5'), ('test3', 'test5'), ('test6', 'test3'), ('test3', 'test6'), ('test5', 'test6'), ('test7', 'test3'), ('test8', 'test7'), ('test3', 'test8'), ('test3', 'test9'), ('test9', 'test10'), ('test8', 'test9'), ('test9', 'test4'), ('test9', 'test11'), ('test3', 'test11'), ('test11', 'test10')):
         cam = cam_from(mem[under])
         r, t = run(over, cam)
         check(not r.bad and 'run the put-back first' in t and not cam.writes and bytes(cam.mem) == mem[under],
               '%s over %s: NOT DONE, nothing written' % (over, under))
     # 5. put back
-    for name in ('test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10'):
+    for name in ('test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11'):
         cam = cam_from(mem[name])
         r, t = run('putback', cam)
         check(not r.bad and 'DONE: ' in t and 'READY (stock)' in t and bytes(cam.mem) == bytes(stock), 'putback after %s: memory equals 4.04 again' % name)
@@ -495,6 +505,21 @@ def main():
     check(not r.bad and 'DONE: ' in t and 'READY (test 10 applied)' in t and bytes(cam.mem) == mem['test10']
           and all(P(drv['va']) <= o < P(drv['va']) + drv['len'] for o in d910) and len(d910) >= 12,
           'test10 after test9: DONE, adds only the drive table (%d bytes), READY (test 10 applied)' % len(d910))
+    for under in ('test3', 'test9'):
+        cam = cam_from(mem[under])
+        r, t = run('test11', cam)
+        check(not r.bad and 'DONE: ' in t and 'READY (test 11 applied)' in t and bytes(cam.mem) == mem['test11'],
+              'test11 after %s: DONE, READY (test 11 applied)' % under)
+    t11 = steps['test11']
+    trs11 = {c['register']: c['new'] for c in t11['front_end'] if c['block'] == 'dfe_trs' and c['system'] == '59.94'}
+    check(t11['timing']['59.94']['H2'] == 814 and t11['timing']['59.94']['V2'] == 1764 and t11['timing']['50'] == steps['test9']['timing']['50']
+          and trs11 == {'0xfc0a1520': 813 << 16 | 3528, '0xfc0a1564': 3528 << 16}
+          and [c for c in t11['front_end'] if c['block'] != 'dfe_trs'] == [c for c in steps['test9']['front_end'] if c['block'] != 'dfe_trs']
+          and t11['sensor_sites'] == steps['test9']['sensor_sites'] and t11['records'] == steps['test9']['records']
+          and 814 * 1764 <= 836 * 1718 < 815 * 1764,
+          'test11 = test9 with the line period 814 (pair 814 / 1764, transfer 813 / 3528): the largest that keeps the stock end time; the 50 system is unchanged')
+    d911 = diff(cam_from(mem['test11']).mem, mem['test9'])
+    check(len(d911) == 4, 'test11 differs from test9 in %d bytes on a 59.94 camera (the pair in two places, the byte derived from it, the transfer list)' % len(d911))
     t3, t9 = steps['test3'], steps['test9']
     regs9 = [c for c in t9['front_end'] if c.get('system', '59.94') == '59.94']
     check(t9['sensor_sites'] == t3['sensor_sites'] and t9['records'] == t3['records'] and t9['timing'] == t3['timing'] and len(regs9) == 45
@@ -515,7 +540,7 @@ def main():
           and steps['test8']['rows'] == 3596 and steps['test8']['first_row'] == 327 and steps['test8']['timing'] == steps['test3']['timing']
           and steps['test8']['records'] == steps['test3']['records'],
           'test7 = test3 with the pair 815 / 1810; test8 = test3 with 3596 sensor rows; nothing else differs')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10')):
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11')):
         r, t = run('dump', cam_from(mem[name]))
         check(('VERDICT READY (test %d applied)' % n) in t, 'dump after %s: READY (test %d applied)' % (name, n))
     # 5b. the second camera run's state (v2 test 2: sensor + records, timing pair still stock) is reported as partly applied

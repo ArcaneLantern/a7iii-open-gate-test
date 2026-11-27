@@ -1,20 +1,24 @@
-# A7 III kit 2 v10: the front end
+# A7 III kit 2 v11: one new test
 
-**If you ran kit 2 v9:** thank you. Tests 7 and 8 both recorded the same frame as test 3: the picture stops at the same row, then the black bar, then the thin strip. So neither of the two counts they changed is the cause.
+**If you ran kit 2 v10:** thank you, that run moved things on. With test 9 the black bar and the strip under it are gone for the first time. So the front-end stage was what caused them.
 
-**What we found since.** Between the sensor and the camera's main processor sits a front-end stage with its own settings for each video mode. For 4K it still describes the stock frame, and none of the eight tests ever changed it. The two new tests do. There is also a new log step: the camera's firmware can write down what its front end is doing, and the dump now copies that log out.
+**What was still wrong.** In the test 9 clip the last 40 rows of the frame are coloured noise, and the picture stutters. The camera ran out of time: it sends the frame line by line, and at the stock line speed only 3,451 lines fit before the next frame starts. Test 9 asked for 3,518. The last rows were never written.
+
+**What is new.**
+
+- **test 11** is test 9 with the lines sent slightly faster (2.7 %), so the taller frame finishes when the stock one does.
+- **The camera's own log is now really copied.** In v10 the kit found the log but refused to copy it, because of a check I got wrong.
+- Test 10 made the picture worse and is not used any more.
 
 **Three things to get right. Please check each:**
 
-1. **Record Setting must be 24p (NTSC) or 25p (PAL), full frame.** At 30p, or in HD, the camera uses a different mode and the tests do nothing.
+1. **Record Setting must be 24p (NTSC) or 25p (PAL), full frame.** At 30p, or in HD, the camera uses a different mode and the test does nothing.
 2. **Take the battery out for ten seconds before each part.** It resets the camera, and the log only keeps the first lines after a start.
 3. **Leave the dial on movie when you plug USB back in for the dump.**
 
-You no longer run `no restart` yourself: tests 9 and 10 set it.
+**For each clip, please:** hold the camera still on something plain (a wall or a sheet of paper) for the first 3 seconds, then move it around for the rest. The still part shows us the picture's fine detail, the moving part shows the stutter.
 
-**If you can:** put the camera on a tripod or a table, pointed at something with clear detail, and do not move it between the three parts. Then the three clips show the same scene and we can compare how much of it each one sees.
-
-Allow about 25 minutes. You need the A7 III on firmware 4.04, a charged battery, a memory card, and its USB data cable.
+Allow about 15 minutes. You need the A7 III on firmware 4.04, a charged battery, a memory card, and its USB data cable.
 
 **How to undo it.** Taking the battery out for ten seconds puts the camera back to stock. So does the `putback` step. The power switch alone is **not** enough.
 
@@ -22,13 +26,12 @@ Allow about 25 minutes. You need the A7 III on firmware 4.04, a charged battery,
 
 | Step | Launcher | What it does |
 | --- | --- | --- |
-| dump | `open_gate_dump` | Read-only. Saves the camera's memory facts, the timing of the last frame and, new, the camera's own log. |
-| log | `open_gate_dfelog` | **New.** One flag byte: the firmware writes its front end's status into its log. |
-| test 9 | `open_gate_test9` | **New.** Test 3 plus the front end's own line counts. Also sets `no restart` and the log. |
-| test 10 | `open_gate_test10` | **New.** Test 9 plus the front end's picture-size table. Also sets `no restart` and the log. |
+| dump | `open_gate_dump` | Read-only. Saves the camera's memory facts, the timing of the last frame and the camera's own log. |
+| log | `open_gate_dfelog` | One flag byte: the firmware writes its front end's status into its log. |
+| test 11 | `open_gate_test11` | **New.** Test 9 with the lines sent 2.7 % faster. Also sets `no restart` and the log. |
 | put back | `open_gate_putback` | Puts the 4.04 bytes back and clears the switches. Not needed in this run: the battery does it. |
 
-**Do not use `open_gate_nocheck`.**
+**Do not use `open_gate_nocheck` or `open_gate_test10`.**
 
 Windows launchers are `windows/<name>.cmd`. On macOS, type `bash ` (with a trailing space), drag `macos/<name>.command` into Terminal, and press Return. Every step asks for the firmware version (type `4.04`). Every step except dump also asks you to type `YES`.
 
@@ -43,33 +46,26 @@ Windows launchers are `windows/<name>.cmd`. On macOS, type `bash ` (with a trail
 
 1. **Battery out for ten seconds**, then back in. Turn the camera on, dial on a stills mode, plug in USB.
 2. Run **log** (`open_gate_dfelog`). Check it says `Outcome: DONE`.
-3. Unplug USB. Turn the dial to **movie**. Record about 5 seconds.
-4. Leave the dial on movie. Plug in USB. Run **dump**. It should say `VERDICT READY (stock)`.
+3. Unplug USB. Turn the dial to **movie**. Record about 6 seconds: still on something plain, then moving.
+4. Leave the dial on movie. Plug in USB. Run **dump**. It should say `VERDICT READY (stock)` and a line starting `Camera log:`.
 
-### Part 2: test 9
+### Part 2: test 11
 
 5. **Battery out for ten seconds**, then back in. Turn the camera on, dial on a stills mode, plug in USB.
-6. Run **test 9**. Check it says `Outcome: DONE`.
-7. Unplug USB. Turn the dial to **movie**. Watch for about 15 seconds: smooth or stutter, black bar near the bottom or not, any picture at all. Record about 5 seconds.
-8. Leave the dial on movie. Plug in USB. Run **dump**. It should say `VERDICT READY (test 9 applied)`.
+6. Run **test 11**. Check it says `Outcome: DONE`.
+7. Unplug USB. Turn the dial to **movie**. Watch for about 15 seconds: smooth or stutter, noise at the bottom edge or not, any picture at all. Record about 6 seconds: still on something plain, then moving.
+8. Leave the dial on movie. Plug in USB. Run **dump**. It should say `VERDICT READY (test 11 applied)`. On a PAL camera it says `test 9 applied`: there the two tests are the same.
+9. **Battery out for ten seconds** to finish.
 
-### Part 3: test 10
-
-9. **Battery out for ten seconds**, then back in. Turn the camera on, dial on a stills mode, plug in USB.
-10. Run **test 10**. Check it says `Outcome: DONE`.
-11. Unplug USB. Turn the dial to **movie**. Watch for about 15 seconds as before. Record about 5 seconds.
-12. Leave the dial on movie. Plug in USB. Run **dump**. It should say `VERDICT READY (test 10 applied)`.
-13. **Battery out for ten seconds** to finish.
-
-**If the camera shows no picture, freezes or does not respond:** take the battery out for ten seconds, tell us in which part it happened and what the screen showed, and go on with the next part. If USB still works in that state, a **dump** before the battery pull helps a lot.
+**If the camera shows no picture, freezes or does not respond:** take the battery out for ten seconds and tell us what the screen showed. If USB still works in that state, a **dump** before the battery pull helps a lot.
 
 ## Please send back
 
 - The new `M3K2_…` folders in `windows/camera_private`, zipped.
-- The three 5-second clips at full 3840×2160, named so we can tell which part each is.
-- One line per part: smooth or stuttering, bar or no bar, anything else you saw.
+- The two clips at full 3840×2160, named so we can tell which part each is.
+- One line per part: smooth or stuttering, noise at the bottom or not, anything else you saw.
 
-**Please send the zips privately, not in a public channel.** The dump copies parts of the camera's working memory, its kernel log and, new in this version, the camera's own log as text. MAC addresses are blanked and the processor's serial line is not copied, but the camera's own log may name the camera or the lens by serial number. We cannot promise that nothing in there identifies the camera.
+**Please send the zips privately, not in a public channel.** The dump copies parts of the camera's working memory, its kernel log and the camera's own log as text. MAC addresses are blanked and the processor's serial line is not copied, but the camera's own log may name the camera or the lens by serial number. We cannot promise that nothing in there identifies the camera.
 
 ## Results the steps can print
 
