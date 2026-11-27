@@ -147,7 +147,7 @@
   }
  },
  "kit2": {
-  "kit": "m3kit2_v7",
+  "kit": "m3kit2_v8",
   "written": "2026-11-26, by hand (publish_a7m3.py writes kit 1 only)",
   "design": "a7m3_map/modding/designs/og_m3_v2.json (build/opengate/build_og_m3.py)",
   "helper_build": "bash helper/build_m3og.sh (zig 0.13.0, arm-linux-gnueabi, cortex_a5 without NEON/VFP)",
@@ -158,6 +158,7 @@
    "windows/open_gate_test3.cmd",
    "windows/open_gate_test4.cmd",
    "windows/open_gate_test5.cmd",
+   "windows/open_gate_test6.cmd",
    "windows/open_gate_putback.cmd",
    "windows/open_gate_norestart.cmd",
    "windows/open_gate_nocheck.cmd",
@@ -167,6 +168,7 @@
    "macos/open_gate_test3.command",
    "macos/open_gate_test4.command",
    "macos/open_gate_test5.command",
+   "macos/open_gate_test6.command",
    "macos/open_gate_putback.command",
    "macos/open_gate_norestart.command",
    "macos/open_gate_nocheck.command",
@@ -175,63 +177,67 @@
   "files": {
    "windows/tools/camera_tests/K2_open_gate/m3og.py": {
     "source": "a7m3_map/camera_tests/K2_open_gate/m3og.py",
-    "sha256": "3f47f06e2d9cfe232e51f9f9b55287cd37debee58ead1858d2b024988467e1f2"
+    "sha256": "f3a16267f3cba64e9ed966689eaa4c6129e8873f691ff2fc248f4bee9c8549fb"
    },
    "windows/tools/camera_tests/K2_open_gate/predictions.json": {
     "source": "a7m3_map/camera_tests/K2_open_gate/predictions.json",
-    "sha256": "7f2bf0f5c675e0bea8e75985ebc66ae3ec622f6b76723b6dc86cb50504a4af4d"
+    "sha256": "cca8ba81c9327b6020bc7ea5d1f472128fde5fa963380f9478079bba66aa2544"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_dump.so": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_dump.so",
-    "sha256": "db33dfac0661ecac277a760da6bd0e5a344997bbb2bba41171617721eb9ca7ef"
+    "sha256": "bddaebd78936f6f8076d7bf8b91b06fe28c3acc17176a385fe903625fc208f98"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_test1.so": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_test1.so",
-    "sha256": "f7e257f8179b81c6a62e82651c283606463edc3a6c464fa6459cd1277143803f"
+    "sha256": "2a948dc331a645a445c021ca89bd296aba10c58beaae2e840291fe664d861dc4"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_test2.so": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_test2.so",
-    "sha256": "9b8774abaf81a7950bd28d15385e309a21b6b2baf2438ddc2634e24a758319e7"
+    "sha256": "324fa53eecfc6f5522d117125e5f4e45522b4f1964982bcc6cca6ceefa71a302"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_test3.so": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_test3.so",
-    "sha256": "62784de2a923a3be9b2114129e180a3fd33ce5955a604c30b1447f581ed2cd80"
+    "sha256": "7394c42927db515f33112035f35423bf01f66df9bc857e4863b31d1367cf4f56"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_test4.so": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_test4.so",
-    "sha256": "e84608ce7e5787da8bcae59141328f0fe959f49375a19dfa5b57239f313d9637"
+    "sha256": "3984b22243f4a78f4382636f5e4218d15d931f97a5bc32165a94c934d222b78e"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_test5.so": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_test5.so",
-    "sha256": "ea454e935eff381e9e7bfacde7525a301de31c9a22afa3de984012b24b08aae8"
+    "sha256": "2b67ee7c790b6a1f2b119ab8f6a497e0de374a6b275c5e7bf688a71de87e7646"
+   },
+   "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_test6.so": {
+    "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_test6.so",
+    "sha256": "b923ef81a54ba63f4118ef7b32cb884cc4f178ac8da60fe8bd2b1d7b52597b6d"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_putback.so": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_putback.so",
-    "sha256": "01d85402bca071268329f56ff58a1c3fd548f5c30fa89e986b143bb0fdc1da69"
+    "sha256": "325977218ef352237baf7fd3ad669811e240912cc2e9232363730b5248fe034b"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_norestart.so": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_norestart.so",
-    "sha256": "8c18aed0f8eb5e54c42a1b675cb7e5d2357d0ab6cd035784ae71766fb942ab43"
+    "sha256": "111abb7550c47bf98858200853e096db3ec728e76b29cf92ec25f044c6167f71"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/libJit_m3og_nocheck.so": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/libJit_m3og_nocheck.so",
-    "sha256": "954c26a3be1501e7523c3008017c32d248dad21583381b8f9226c349ca98c94b"
+    "sha256": "c9599c68af6dab812a8a29ec573b139389df753c7a1548b876789f0678edf17a"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/m3og.c": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/m3og.c",
-    "sha256": "e8ccbf13c54852c338d74dd31330836d428fe046759a2942241c6edf2d076c46"
+    "sha256": "d051af66a9ae503210482ab7dddce5f488d965d877225467b76c01431a8b01ff"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/m3og_design.h": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/m3og_design.h",
-    "sha256": "755d17b4e5532b15ed94fd310d92450bf894dcd9e042703af355eba589535d94"
+    "sha256": "e41c9b6573c028c61fdf128dac5e37e139e282f5d42cc9113377ebb06067f465"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/build_m3og.sh": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/build_m3og.sh",
-    "sha256": "8d5f476925a88923c387b25c8e50ef21ba866dc543866a2f3c9e0b5257eee1f0"
+    "sha256": "36c9e3b1ae8ea524303b704d1a988ccb6f3aeba0d5e456d4cfadc121c4c1090f"
    },
    "windows/tools/camera_tests/K2_open_gate/helper/emu_m3og.py": {
     "source": "a7m3_map/camera_tests/K2_open_gate/helper/emu_m3og.py",
-    "sha256": "8ea94701621947808a1d36b89a030bd4033b64ab95c36af3ef51a70e58f652c7"
+    "sha256": "258f1c24d93ceaa7f11f56c8ced7a5e7107b27692d1d2a7ab883072750fd849c"
    }
   }
  }

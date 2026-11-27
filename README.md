@@ -1,6 +1,19 @@
 # A7 III open-gate test kits (firmware 4.04)
 
-## Kit 2 v7 (2026-11-27): open-gate tests and debug dump
+## Kit 2 v8 (2026-11-27): open-gate tests and debug dump
+
+**v8, after the v7 run.** Test 5 (test 3 plus the size row) wrote cleanly and recorded the same frame as test 3: picture rows 0 to 2136, black to 2155, four strip rows. The refresh loop ran as before (129 retries). So the size row does not set the last row, and that idea is closed.
+
+What all three measured clips share: the valid picture ends at the stock last sensor row (3785). Each test starts half the added rows higher and asks for all of them, and only the rows gained at the top arrive. **Test 6** is test 3 with the first row moved up by the whole 92 rows (281 instead of 327; one byte differs from test 3). Rows 281 to 3785 are exactly the 3504 rows its records expect.
+
+- If the frame is whole (picture to row 2159, no band): the last row is pinned, the rest of the design is sound, and what is left is finding what pins it. Until then about 314 extra rows are available above the stock window (picture about 3690 rows).
+- If it ends early again: only half of the row-count change takes effect, and the row-count register is the thing to look at.
+
+A second tester's test 5 run could not be used: the camera was at 30p (the dump shows the 4K 30p crop window, 2830 rows from row 665), which is a different drive mode that the tests do not touch, and `norestart` was not run.
+
+**Tester steps: [K2_TEST.md](K2_TEST.md).**
+
+### Kit 2 v7 (2026-11-27): the size row
 
 **v7, after the v6 run.** Test 3 (92 more rows, line period stock) still stutters, so the shortened line period is cleared. The tester's camera clips gave the next clue. Each recorded frame ends early: picture, a black band, then the top rows of the picture again.
 
@@ -67,7 +80,7 @@ The firmware shows a likely cause. Test 2 made the front-end records 624 lines t
 
 **Tester steps: [K2_TEST.md](K2_TEST.md).** Everything is changed only in the camera's working memory (RAM). The put-back step, a restart, or a battery pull undoes it.
 
-Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built nine times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
+Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built ten times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
 
 | Step | Launcher | Picture rows | Squeeze | Line period (59.94 / 50 system) | Line rate above stock |
 | --- | --- | --- | --- | --- | --- |
@@ -102,11 +115,11 @@ The test design (`og_m3_v2`) comes from the 4.04 firmware:
 - The front-end record of the 4K full-frame mode holds 65 height fields and the vertical scaler step.
 - The camera core's drive table holds the cycle pair. In every movie and live-view mode that has one, its line count covers the whole sensor frame and the pair fits inside the frame time. The new line periods leave the gap the 50 system leaves in stock.
 - The firmware's own code, run in an emulator, programs the new window and builds the drive table from the new pair. The one extra byte it changes is written too.
-- The nine helper builds were run in an emulator against the 4.04 memory image: 106 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, the two switch steps (one bit each, other bits kept, cleared by put back), and a full application log staying under the RAM disk's size.
+- The ten helper builds were run in an emulator against the 4.04 memory image: 119 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, the two switch steps (one bit each, other bits kept, cleared by put back), and a full application log staying under the RAM disk's size.
 
 What is not known: whether the pair is the only thing the camera core needs, and whether the front end keeps up with the shorter line period. If a test restarts the camera, the dump taken right after now includes the application log, where the firmware writes which check gave up.
 
-On the A7 III so far: v1 confirmed the location and wrote nothing. v2 test 1 passed; v2 test 2 restarted the camera. v3 tests 2 to 4 (second tester, 50 system) each gave a picture for about a second, then the forced restart. v4 (first tester, test 4): no restart with the switch set, but a stuttering picture, and a jittery dark one with the loop off. v5 (first tester): the timing read worked, see the table at the top. v6 test 3 (first tester): still stutters; the clips show the picture valid for half the added rows only. The v7 test 5 has not run yet.
+On the A7 III so far: v1 confirmed the location and wrote nothing. v2 test 1 passed; v2 test 2 restarted the camera. v3 tests 2 to 4 (second tester, 50 system) each gave a picture for about a second, then the forced restart. v4 (first tester, test 4): no restart with the switch set, but a stuttering picture, and a jittery dark one with the loop off. v5 (first tester): the timing read worked, see the table at the top. v6 test 3 (first tester): still stutters; the clips show the picture valid for half the added rows only. v7 test 5 (first tester): the same frame as test 3, so the size row is not it. The v8 test 6 has not run yet.
 
 Commands, from `windows` (after `setup.cmd`):
 
@@ -213,4 +226,4 @@ On the first tester's camera, the service-mode login and `READ_HASP` worked (kit
 
 ## Licence and third-party code
 
-`windows/tools/third_party/sony-pmca-re` holds the unmodified USB transport files of [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE), pinned by checksum (`PINNED.json`). The `CT1_usb_first_contact` scripts are the A7 IV / A7S III kits' guarded USB layer, copied unchanged (`PROVENANCE.json`). No Sony firmware file is included. Kit 1 carries only sizes and checksums. Kit 2's helper (`m3og_design.h`, and the nine libraries built from it) carries the 4.04 contents of the three small tables it checks and changes: the sensor register list (5,496 bytes), two front-end records (1,344 bytes each) and two 8-byte timing rows, plus checksums of two code ranges and 16 pages.
+`windows/tools/third_party/sony-pmca-re` holds the unmodified USB transport files of [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE), pinned by checksum (`PINNED.json`). The `CT1_usb_first_contact` scripts are the A7 IV / A7S III kits' guarded USB layer, copied unchanged (`PROVENANCE.json`). No Sony firmware file is included. Kit 1 carries only sizes and checksums. Kit 2's helper (`m3og_design.h`, and the ten libraries built from it) carries the 4.04 contents of the three small tables it checks and changes: the sensor register list (5,496 bytes), two front-end records (1,344 bytes each) and two 8-byte timing rows, plus checksums of two code ranges and 16 pages.
