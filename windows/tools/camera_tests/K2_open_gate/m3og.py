@@ -1,4 +1,11 @@
-"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v5): open-gate tests, and a debug dump.
+"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v6): open-gate tests, and a debug dump.
+
+v6 (2026-11-27), after the v5 timing read (a7m3_map FINDINGS M3-F044): the output sync sits 22.49 / 22.50 / 22.54 ms
+after the frame start in stock, test 4 and test 2, so it does not follow the picture height. With a test applied the
+sequence's two frame counters are one apart, the refresh loop runs about nine times a second, and test 2 showed the
+top strip of the picture at the bottom. Tests 2 and 4 change the line count and the line period together. v6
+redefines test3 as the step that changes only the line count: +92 rows, V2 1764, line period stock (836) on the
+59.94 system. (The 50 system has no room: its stock pair already leaves the minimum blank.)
 
 v5 (2026-11-27), after the v4 run (a7m3_map FINDINGS M3-F043): with the forced restart switched off the camera stays
 on and stutters; with the refresh loop off the picture is jittery and dark; the loop's lost-output-sync path did run.
@@ -33,8 +40,8 @@ of a7m3_map; modding/OG_M3_V2.md there):
             the camera-core timing pair (2030 line pairs; cycle 726, or 696 in the 50 system): the whole 3:2 sensor
             height recorded squeezed into the stock 3840x2160 file (stretch it vertically by 1.185). The line rate is
             15 % (18 %) above stock: the camera may not keep up, in which case it restarts and is stock again.
-  test3     The same three parts for half the extra height: 3724 rows, picture 3688 rows (stretch 1.092), line rate
-            6 % (9 %) above stock.
+  test3     v6: the line count alone. 3504 rows, picture 3468 rows (stretch 1.027), timing pair 836 / 1764: the stock
+            line period on the 59.94 system (801 on the 50 system, which has no room for more lines at 823).
   test4     The same for a quarter: 3568 rows, picture 3532 rows (stretch 1.046), line rate 2 % (5 %) above stock.
   putback   WRITES the 4.04 bytes back wherever a test changed them, and clears the two switches below. A restart or a
             battery pull does the same.
@@ -87,7 +94,7 @@ sys.path.insert(0, str(HERE.parent / "CT1_usb_first_contact"))
 import ct1_common as c                 # noqa: E402  guards, session log, pinned PMCA-RE
 import ct1_stage2_service as s2        # noqa: E402  connect(), libusb_devices()
 
-KIT = "m3kit2_v5"
+KIT = "m3kit2_v6"
 TEST = "M3K2"
 EXPECTED_MODEL = "ILCE-7M3"
 EXPECTED_FIRMWARE = "4.04"
@@ -97,21 +104,21 @@ KNOWN = json.loads((HERE.parent / "K1_readonly" / "expected_404.json").read_text
 
 # step -> (library, SHA-256, writes?, what it does)
 STEPS = {
-    "dump": ("libJit_m3og_dump.so", "d38f8a2f55a535081df876bd75b699f1673878df6e8628fc419df1f13a80c028", False,
+    "dump": ("libJit_m3og_dump.so", "7656d53e027fe1c6d185f836de975d95587f2b70720bb3c2e1c3840c4c9af28d", False,
              "read-only dump: facts, logs, where av-cam is, what the design's bytes hold, the tables, the refresh loop's state"),
-    "test1": ("libJit_m3og_test1.so", "14ff271975cd640d40a38625dc979077ab31e365893dab2dea6956e04f9fa916", True,
+    "test1": ("libJit_m3og_test1.so", "10cc3e368c70ac57b72e34d19b81ab8e1cdbf139dff4c37c5b18e2f5c89a4891", True,
               "TEST 1: the 4K 24p/25p full-frame sensor mode reads the whole sensor height (7 bytes)"),
-    "test2": ("libJit_m3og_test2.so", "beb52fc47f3be3ff4c5bc9cc1ee8a5fe9fb755b31110ac840dadc682630c1fa6", True,
+    "test2": ("libJit_m3og_test2.so", "761bde3b45d71d0e3f66021754fd4b3297d0ac27dffe2a4f0402c86ccdb808d2", True,
               "TEST 2: sensor + front end + timing: the whole 3:2 height squeezed into the stock 4K file"),
-    "test3": ("libJit_m3og_test3.so", "7b9bb4ef101b685b35bfc64e1b45fcbf33d86c0be1c908ea743330545f25e93e", True,
-              "TEST 3: as test 2 for half the extra height (picture 3688 rows)"),
-    "test4": ("libJit_m3og_test4.so", "7ae71720336afeba90bcc3a108c686426dce05471b1d815066385c09d4cdaa5a", True,
+    "test3": ("libJit_m3og_test3.so", "19af357c87bf3f0ca19fc76e730b6407268c5923d3cf7e764d7b0e94d4506ed1", True,
+              "TEST 3: 92 more rows with the stock line period (picture 3468 rows; 59.94 system)"),
+    "test4": ("libJit_m3og_test4.so", "8ef34e63a6a611d55e7a4aeb753d6cb30cde0338c7cf1e96d08fb39b42eecd97", True,
               "TEST 4: as test 2 for a quarter of the extra height (picture 3532 rows)"),
-    "putback": ("libJit_m3og_putback.so", "8365859e48b3b810844eab795ad29e33ff838281e44dbb2feb19a0d6828196df", True,
+    "putback": ("libJit_m3og_putback.so", "de333fdaeb8a39133cf9d350652291e6c8d43d72e06b1c29bccbfd829a3922d8", True,
                 "PUT BACK: the 4.04 bytes again wherever a test changed them; both switches cleared"),
-    "norestart": ("libJit_m3og_norestart.so", "06c2f6ed3174ad5cf1a9bf87465b6cd556bf4e663bf5b2125901c7b7b2d20cbe", True,
+    "norestart": ("libJit_m3og_norestart.so", "9b58d1aae291c48ac6ed6613cbe0c9dcc67ce34ffb2bed9c11211923f4a1761b", True,
                   "NO RESTART: the camera's refresh loop keeps retrying but never forces a restart (1 bit)"),
-    "nocheck": ("libJit_m3og_nocheck.so", "1a6a656ce814983b7e75846928bb823c54aaeb4bfd483b9fe3fe9f5be07bb1df", True,
+    "nocheck": ("libJit_m3og_nocheck.so", "1613e90d17b5925a9c571052088406e87e2b96cf9c6b5b0de1981c36e0d08100", True,
                 "NO CHECK: the camera's refresh loop is switched off (1 bit)"),
 }
 PINNED = {sha for _n, sha, _w, _t in STEPS.values()}

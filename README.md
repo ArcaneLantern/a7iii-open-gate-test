@@ -1,6 +1,25 @@
 # A7 III open-gate test kits (firmware 4.04)
 
-## Kit 2 v5 (2026-11-27): open-gate tests and debug dump
+## Kit 2 v6 (2026-11-27): open-gate tests and debug dump
+
+**v6, after the timing read.** The first tester ran v5 (59.94 system): three dumps with the dial on movie.
+
+| | Stock | Test 4 (+156 rows) | Test 2 (+624 rows) |
+| --- | --- | --- | --- |
+| Output sync after frame start | 22.491 ms | 22.502 ms | 22.538 ms |
+| Refresh count in about 10 s | 0 | 86 | 115 |
+| The sequence's two frame counters | equal | one apart | one apart |
+| On screen | normal | stutter | stutter, top strip of the picture at the bottom |
+
+So the output sync does not follow the picture height, and the idea that it arrives too late is wrong. A second tester (50 system) ran v4 in full: test 4 stuttered with either switch, and test 2 with the refresh loop off froze the camera hard (battery pull). **Do not use `nocheck` with test 2.**
+
+What is left: tests 2 and 4 change the line count of the second cycle pair and shorten its line period in the same step. v6 redefines **test 3** to change the line count only: 92 more rows, pair 836 / 1764, which still fits the frame with the stock period on the 59.94 system. If that runs clean, the shortened period is what the camera cannot take, and full height at 24p would need a longer frame instead. If it stutters too, the line count itself (or the record heights) is the problem. The 50 system has no room for such a step.
+
+All eight libraries were rebuilt (the design header changed); only test 3 behaves differently.
+
+**Tester steps: [K2_TEST.md](K2_TEST.md).**
+
+### Kit 2 v5 (2026-11-27): the timing read
 
 **v5, after the fourth run.** The first tester ran v4 (test 4 only; test 2 was refused because put back was skipped). The switch byte held its value. With the forced restart off the camera stayed on and stuttered. With the refresh loop off the picture was jittery and very dark. The dump shows the loop's "lost output sync" path did run. So the loop is not a false alarm: the output sync of each frame is stamped in a different frame than the firmware expects, and with the loop off the per-frame sequence (exposure among it) runs out of step.
 
@@ -37,7 +56,7 @@ Each step is one service session that loads a small helper library on the camera
 | --- | --- | --- | --- | --- | --- |
 | stock | | 3376 | none | 836 / 823 | |
 | test 2 | `open_gate_test2` | 4000 (full 3:2) | 1.185 | 726 / 696 | 15 % / 18 % |
-| test 3 | `open_gate_test3` | 3688 | 1.092 | 787 / 754 | 6 % / 9 % |
+| test 3 (v6) | `open_gate_test3` | 3468 | 1.027 | 836 / 801 | 0 / 3 % |
 | test 4 | `open_gate_test4` | 3532 | 1.046 | 821 / 787 | 2 % / 5 % |
 
 The other steps:
@@ -70,7 +89,7 @@ The test design (`og_m3_v2`) comes from the 4.04 firmware:
 
 What is not known: whether the pair is the only thing the camera core needs, and whether the front end keeps up with the shorter line period. If a test restarts the camera, the dump taken right after now includes the application log, where the firmware writes which check gave up.
 
-On the A7 III so far: v1 confirmed the location and wrote nothing. v2 test 1 passed; v2 test 2 restarted the camera. v3 tests 2 to 4 (second tester, 50 system) each gave a picture for about a second, then the forced restart. v4 (first tester, test 4): no restart with the switch set, but a stuttering picture, and a jittery dark one with the loop off. The v5 timing read has not run yet.
+On the A7 III so far: v1 confirmed the location and wrote nothing. v2 test 1 passed; v2 test 2 restarted the camera. v3 tests 2 to 4 (second tester, 50 system) each gave a picture for about a second, then the forced restart. v4 (first tester, test 4): no restart with the switch set, but a stuttering picture, and a jittery dark one with the loop off. v5 (first tester): the timing read worked, see the table at the top. The v6 test 3 has not run yet.
 
 Commands, from `windows` (after `setup.cmd`):
 
