@@ -1,4 +1,13 @@
-"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v12): open-gate tests, and a debug dump.
+"""A7 III (ILCE-7M3, firmware 4.04) kit 2 (m3kit2_v13): open-gate tests, and a debug dump.
+
+v13 (2026-11-27), after the v12 run (a7m3_map FINDINGS M3-F060): with the memory ports at 3529 lines the faults the log
+showed for every frame are gone, and a new one appears. The first frame passes every stage; in the second the front
+end's image generator does not start, its link generator stands at line 156, and the output keeps sending the stored
+frame: the picture stands still. 156 = 64 (the link line where the image stage starts) + 92 (the rows added), which
+reads as the image stage ending the first frame 92 lines short. The front end's drive table is the one front-end table
+tests 12 and 13 left at the stock height (crops of 3392 lines, an output size of 3437). v13 adds test14 = test 12 plus
+that table's twelve heights raised by 92 (the words of test 10), and test15 = test 12 plus ten of them (the two
+inner-window heights stay stock).
 
 v12 (2026-11-27), after the v11 run (a7m3_map FINDINGS M3-F058): test 11 recorded the same frame as test 9, so the line
 period was not the cause; the time budget is withdrawn. The dump's copy of the camera's own log worked, and the log
@@ -68,7 +77,7 @@ itself. Cause as far as the firmware shows it: test 2 made the front-end records
 camera-core timing pair of that drive at the stock 3436 lines. v3 moves the timing pair with the records, adds two
 smaller heights, and the dump now also copies the camera's application log.
 
-Eighteen steps, each one service session that loads one small helper library on the camera (helper/m3og.c, design og_m3_v2
+Twenty steps, each one service session that loads one small helper library on the camera (helper/m3og.c, design og_m3_v2
 of a7m3_map; modding/OG_M3_V2.md there):
 
   dump      READ-ONLY. Kernel and memory facts, the kernel log and the application log, where av-cam sits in memory
@@ -101,6 +110,9 @@ of a7m3_map; modding/OG_M3_V2.md there):
   test12    v12: test 11's bytes plus the front end's three frame-memory port entries (two write ports, one read
             port) at 3529 lines instead of 3437. The memory behind them holds 4139 lines.
   test13    v12: test 9's bytes plus the same three entries. On the 50 system the same bytes as test 12.
+  test14    v13: test 12's bytes plus the twelve height words of the front end's drive table raised by 92 (the
+            words of test 10, which still had the stock ports).
+  test15    v13: test 12's bytes plus ten of those words: the two inner-window heights (3376) stay stock.
   putback   WRITES the 4.04 bytes back wherever a test changed them, and clears the switches below. A restart or a
             battery pull does the same.
   norestart WRITES one bit (0x40 of the refresh loop's switch byte): the loop keeps retrying but never forces the
@@ -155,7 +167,7 @@ sys.path.insert(0, str(HERE.parent / "CT1_usb_first_contact"))
 import ct1_common as c                 # noqa: E402  guards, session log, pinned PMCA-RE
 import ct1_stage2_service as s2        # noqa: E402  connect(), libusb_devices()
 
-KIT = "m3kit2_v12"
+KIT = "m3kit2_v13"
 TEST = "M3K2"
 EXPECTED_MODEL = "ILCE-7M3"
 EXPECTED_FIRMWARE = "4.04"
@@ -165,41 +177,45 @@ KNOWN = json.loads((HERE.parent / "K1_readonly" / "expected_404.json").read_text
 
 # step -> (library, SHA-256, writes?, what it does)
 STEPS = {
-    "dump": ("libJit_m3og_dump.so", "5be4e4bed08b3f4b53f0627f46060af585ce3ecad3c87657386b643682ee4a35", False,
+    "dump": ("libJit_m3og_dump.so", "c848f4932a9738c73741f12a7d5f4133dc499e488af3cf1df37b1b89219ecc01", False,
              "read-only dump: facts, logs, where av-cam is, what the design's bytes hold, the tables, the refresh loop's state"),
-    "test1": ("libJit_m3og_test1.so", "6e4ffe37dbddaafa365d4cceed79ad4b2debd7989b8a2cf3954f317ca125eb90", True,
+    "test1": ("libJit_m3og_test1.so", "70cb1011ddfb6524f14e08314117bc207bceb0a514f4e022dcfff9fb5e63f229", True,
               "TEST 1: the 4K 24p/25p full-frame sensor mode reads the whole sensor height (7 bytes)"),
-    "test2": ("libJit_m3og_test2.so", "0e5110c63c2901ff7be57621d7a5259f0a5cfc6f36341dfd32a178869ee531aa", True,
+    "test2": ("libJit_m3og_test2.so", "64c19aac94fba024d9bcc1565278f7ddd70ecc7e91d476892d86298ac1626d99", True,
               "TEST 2: sensor + front end + timing: the whole 3:2 height squeezed into the stock 4K file"),
-    "test3": ("libJit_m3og_test3.so", "49e470113c6b175235c8b28633ff496ef84f4abe9b1055db6ebf723c41e45652", True,
+    "test3": ("libJit_m3og_test3.so", "afd28da09a0b8147c485c41f2e47af18e7d0bc543301568f02a3bc0d1e08ae86", True,
               "TEST 3: 92 more rows with the stock line period (picture 3468 rows; 59.94 system)"),
-    "test4": ("libJit_m3og_test4.so", "4a693dc6a84d60efc45b9537cfe820e0f7ed8c6f23e6598f3363d58dedd381af", True,
+    "test4": ("libJit_m3og_test4.so", "47d4896be04ee259e4a29e3981aed50b4e781db8f0cbb01ad68af5c430514122", True,
               "TEST 4: as test 2 for a quarter of the extra height (picture 3532 rows)"),
-    "test5": ("libJit_m3og_test5.so", "8905b472fdc3d39919ae79c7017106975a012e2c3a81fd134bce41adf1e2b720", True,
+    "test5": ("libJit_m3og_test5.so", "459fb167e781b6dabe0a25f24b65727cb9dee33a61a4d673702a6ff9a1b169ab", True,
               "TEST 5: test 3 plus the size row (inner height 3468): does the whole taller picture arrive?"),
-    "test6": ("libJit_m3og_test6.so", "1058f678725b2d44125c600f032a3388846fab768c22eac114d7aac610352d6d", True,
+    "test6": ("libJit_m3og_test6.so", "bb809fc50e9bc52b854756092a69159a502cb56f81983fa74095cba39ddfec36", True,
               "TEST 6: test 3 with the first sensor row moved up by all 92 rows (row 281): is the frame whole?"),
-    "test7": ("libJit_m3og_test7.so", "abfa4a3174a0f690e5e1a19611092a37fb3208b066310f8806340e660884d1e6", True,
+    "test7": ("libJit_m3og_test7.so", "62e4141ccf52bb12929fa80df1aae587e2a39cca6168f814c3add5231f0f3480", True,
               "TEST 7: test 3 with the timing pair's line count raised twice as far (1810): is the frame whole?"),
-    "test8": ("libJit_m3og_test8.so", "6174e84096b983476110ee24ba86700fb9090e2cca15ba928e05c267e5e28789", True,
+    "test8": ("libJit_m3og_test8.so", "d8cf12bb20454d7bcaaccf4a552a58d98ca1c3bc24076e96db36913115fb4b2f", True,
               "TEST 8: test 3 with the sensor's row count raised twice as far (3596 rows): is the frame whole?"),
-    "test9": ("libJit_m3og_test9.so", "ea61af8ecc1d3e50e6d019a221d0e2e202bb3547e377e5277c7a0476cc017212", True,
+    "test9": ("libJit_m3og_test9.so", "76fab380b597efcc5a90b9d5fb33a7bd59d079a992063a2531ce65045fa4861f", True,
               "TEST 9: test 3 plus the front end's own line counts (45 fields); also sets no-restart and the front-end log"),
-    "test10": ("libJit_m3og_test10.so", "2ea4662550dd3747a5513c29939537098314bf289606e99ddb90e283b4ffb79b", True,
+    "test10": ("libJit_m3og_test10.so", "d864cd98a882cfa70351ab668c6510c4e58c436b0fa0f8f60afacdbb7eac9e0a", True,
                "TEST 10: test 9 plus the front end's geometry table (12 height words); also sets no-restart and the front-end log"),
-    "test11": ("libJit_m3og_test11.so", "98667bdac7834edb32bf69edfb00bc9cf3f4c3638dede5ec7cf3e09a580d1480", True,
+    "test11": ("libJit_m3og_test11.so", "e10bdf75d64c7dacf7081b3260195210f748a52f47e9f6b0580136b23543986e", True,
                "TEST 11: test 9 with the line period 814 so the taller frame ends in time; also sets no-restart and the front-end log"),
-    "test12": ("libJit_m3og_test12.so", "b2c7152ad491f5de5c9f52815f31a9280f0c2fa6e0d5aec4a50901e83dd11e8a", True,
+    "test12": ("libJit_m3og_test12.so", "8c29ae776d527a380e4668ae1d91af0bbad0f54cc32f2f2b2efae98cb2f1c76a", True,
                "TEST 12: test 11 plus the front end's three frame-memory ports at 3529 lines; also sets no-restart and the front-end log"),
-    "test13": ("libJit_m3og_test13.so", "5748de23cf52b006116d0ceb5a23df47ce44c0ac52c094a75b4701d839bd87d1", True,
+    "test13": ("libJit_m3og_test13.so", "e412cc9904a2139a803d652639e374ae0755ff4b26323036026f99b34572c834", True,
                "TEST 13: test 9 plus the same three ports (stock line period); also sets no-restart and the front-end log"),
-    "putback": ("libJit_m3og_putback.so", "1964db1b0051d4196d85d271460fdad8c9ac37d78d8f9c2f9fe985c42d4383bd", True,
+    "test14": ("libJit_m3og_test14.so", "f9cf675a9fbb1aaa716e9aca067de1348b1e69af7b56d6a28e8f3856fea277ee", True,
+               "TEST 14: test 12 plus the front end's geometry table at the taller height (12 height words); also sets no-restart and the front-end log"),
+    "test15": ("libJit_m3og_test15.so", "a977b7fa91db46eb4967270ecc32ea6a25c76785bf2f80e4e7a596bb24879a59", True,
+               "TEST 15: test 12 plus ten of those height words (the two inner heights stay stock); also sets no-restart and the front-end log"),
+    "putback": ("libJit_m3og_putback.so", "deec64a752c7304715039470e0591c69f99d99d41ed23da82ee0e7fea04dc52b", True,
                 "PUT BACK: the 4.04 bytes again wherever a test changed them; the switches and the front-end log cleared"),
-    "norestart": ("libJit_m3og_norestart.so", "548b81394c2a925e18cdc69c52171f162b471f0041e58bf8b7fab9f601910a80", True,
+    "norestart": ("libJit_m3og_norestart.so", "a2b3b3aa3e5a44cea4ce0f5943e22e2e769550c64287f6a5395dd3af4566e3cc", True,
                   "NO RESTART: the camera's refresh loop keeps retrying but never forces a restart (1 bit)"),
-    "nocheck": ("libJit_m3og_nocheck.so", "f02d0d8f6e7ac553d4e78f4674869d22e9ab623bc12d608e789aa959f8a31379", True,
+    "nocheck": ("libJit_m3og_nocheck.so", "da5c485e77735bd25b1951679bd8718766f03001e026d2be5973accf81cdf0b4", True,
                 "NO CHECK: the camera's refresh loop is switched off (1 bit)"),
-    "dfelog": ("libJit_m3og_dfelog.so", "feb88c7efa895136b2b2eb4741566d74cbc627aa5abdd14cc65313f312d7bce2", True,
+    "dfelog": ("libJit_m3og_dfelog.so", "50d7dce30393e34aa536b3e36ef0fc4e0ec5baa617f38a0251cd711488593ee5", True,
                "FRONT-END LOG: the firmware's own status print for its front end is switched on (4 bits of one byte)"),
 }
 PINNED = {sha for _n, sha, _w, _t in STEPS.values()}
@@ -504,6 +520,12 @@ def log_highlights(blob):
         found = re.findall(pat, t)
         for m in list(dict.fromkeys(found))[:3]:
             out.append(m.strip())
+    flat = t.replace("\r", "").replace("\n", "")
+    for m in list(dict.fromkeys(re.findall(r"(?:imgSGC|nrSGC|OfSGC|OutSGC|ZpdPreSGC|(?:Lnk|Rcv|Trs|Drv)SGC(?: sub)?\d):Last frame is not started", flat)))[:6]:
+        out.append(m)
+    for a, b in list(dict.fromkeys(re.findall(r",L([0-9a-f]{8} [0-9a-f]{8}) [0-9a-f]{8} [0-9a-f]{8},I([0-9a-f]{8} [0-9a-f]{8}),N", flat)))[:4]:
+        if a.split()[1] != "00000000":                 # channel 1 in use: a 4K status print
+            out.append("link L%s image I%s" % (a, b))
     return out
 
 
@@ -564,9 +586,9 @@ def say_result(session, f):
 
 def canned_result(step, state):
     """What the helper would report on a model camera when it cannot be emulated here (the kit ships no firmware).
-    state: the design's state before the step ('stock', 'test1' .. 'test13'), with '|<hex>' appended while a switch bit is
+    state: the design's state before the step ('stock', 'test1' .. 'test15'), with '|<hex>' appended while a switch bit is
     set (0x40 / 0x02 = the refresh loop's bits, 0x100 = the front-end log). Returns (text, new state)."""
-    name = {"stock": "READY (stock)", **{"test%d" % n: "READY (test %d applied)" % n for n in range(1, 14)}}
+    name = {"stock": "READY (stock)", **{"test%d" % n: "READY (test %d applied)" % n for n in range(1, 16)}}
     state, _bar, gtxt = state.partition("|")
     guard = int(gtxt or "0", 16)
     gline = lambda g: ("GUARD flag byte 0x%02x  refresh loop %s\nDFELOG flag byte 0x%02x  front-end status print %s"   # noqa: E731
@@ -591,10 +613,13 @@ def canned_result(step, state):
         if cleared:
             lines.append("guard: switch bits cleared, 1 byte written and read back")
             guard = 0
-        sets = 0x140 if step in ("test9", "test10", "test11", "test12", "test13") else 0
+        sets = 0x140 if step in ("test9", "test10", "test11", "test12", "test13", "test14", "test15") else 0
         if step != "putback" and state not in ("stock", step) and (step, state) not in (("test2", "test1"), ("test5", "test3"), ("test9", "test3"),
                                                                                     ("test10", "test9"), ("test10", "test3"), ("test11", "test9"), ("test11", "test3"), ("test12", "test11"), ("test12", "test9"),
-                                                                                    ("test12", "test3"), ("test12", "test13"), ("test13", "test9"), ("test13", "test3")):
+                                                                                    ("test12", "test3"), ("test12", "test13"), ("test13", "test9"), ("test13", "test3"),
+                                                                                    ("test14", "test12"), ("test14", "test11"), ("test14", "test9"), ("test14", "test3"), ("test14", "test13"),
+                                                                                    ("test14", "test10"), ("test14", "test15"), ("test15", "test12"), ("test15", "test11"), ("test15", "test9"),
+                                                                                    ("test15", "test3"), ("test15", "test13")):
             lines.append("NOT DONE: block fe_rec_0a byte at 0x63e0d79a holds 0xd2 (another test is applied: run the put-back first); nothing is written")
         elif target == state and not cleared and (guard & sets) == sets:
             lines.append("NOTHING TO DO: every byte already holds the target")
@@ -903,6 +928,21 @@ def selftest():
                     ("putback", "READY (stock)", "DONE", "STOCK"), ("test13", "READY (test 13 applied)", "DONE", "on, NO FORCED RESTART"),
                     ("test12", "READY (test 12 applied)", "DONE", "on, NO FORCED RESTART"), ("putback", "READY (stock)", "DONE", "STOCK"),
                     ("dump", "READY (stock)", None, "STOCK")], str(trail))
+    sim = make_sim(files=files, emulate=emulator())
+    trail = []
+    for step in ("test12", "test14", "dump", "test15", "putback", "test15", "test14", "putback", "dump"):
+        s, _m, sim = simulate(step, sim)
+        f = s.results.get("k2", {}).get("result", {})
+        trail.append((step, f.get("verdicts", [""])[-1], f.get("outcome"), (f.get("guard") or [""])[-1].split("refresh loop ")[-1]))
+    check("v13 ladder: test14 goes over test12 and over test15; test15 over test14 is refused; putback clears all",
+          trail == [("test12", "READY (test 12 applied)", "DONE", "on, NO FORCED RESTART"), ("test14", "READY (test 14 applied)", "DONE", "on, NO FORCED RESTART"),
+                    ("dump", "READY (test 14 applied)", None, "on, NO FORCED RESTART"), ("test15", "READY (test 14 applied)", "NOT DONE", "on, NO FORCED RESTART"),
+                    ("putback", "READY (stock)", "DONE", "STOCK"), ("test15", "READY (test 15 applied)", "DONE", "on, NO FORCED RESTART"),
+                    ("test14", "READY (test 14 applied)", "DONE", "on, NO FORCED RESTART"), ("putback", "READY (stock)", "DONE", "STOCK"),
+                    ("dump", "READY (stock)", None, "STOCK")], str(trail))
+    check("log summary: a stalled front end is named (the start that was not taken, the link and image counters)",
+          log_highlights(b"x.imgSGC:Last frame is not started.!.LnkSGC0:Last frame is not sta\nrted.d.HVcnt:D00941433,R3fff3fff 3fff3fff,L0035009c 0035\n009c 3fff3fff 3fff3fff,I3fff3fff 3fff3fff,N00000000v.")
+          == ["imgSGC:Last frame is not started", "LnkSGC0:Last frame is not started", "link L0035009c 0035009c image I3fff3fff 3fff3fff"], "")
     s, _m, sim = simulate("dump", make_sim(files=files, emulate=emulator()))
     f = s.results.get("k2", {}).get("result", {})
     check("dump: TV system reported, kernel log saved",
@@ -1042,7 +1082,7 @@ def main():
         print("Nothing was sent to any device.")
         return
     if not args.step:
-        parser.error("name the step: dump, test1 to test13, norestart, nocheck, dfelog or putback")
+        parser.error("name the step: dump, test1 to test15, norestart, nocheck, dfelog or putback")
     lib = library(args.step)
     if args.dry_run:
         lines, _s, _sim = dry_run_lines(args.step)

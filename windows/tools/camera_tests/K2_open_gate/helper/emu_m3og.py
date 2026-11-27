@@ -28,7 +28,7 @@ ROOT = HERE.parents[2]
 AVCAM = ROOT / 'work' / 'extracted' / 'a7m3_404' / '0700_part_image' / 'dev' / 'nflasha3' / 'av-cam.bin'
 KEMCO = ROOT / 'work' / 'extracted' / 'a7m3_404' / 'update' / '0800_appli' / 'setting' / 'kemco.txt'
 DESIGN = ROOT / 'modding' / 'designs' / 'og_m3_v2.json'
-LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'test12', 'test13', 'putback', 'norestart', 'nocheck', 'dfelog')}
+LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'test12', 'test13', 'test14', 'test15', 'putback', 'norestart', 'nocheck', 'dfelog')}
 
 BASE, STACK, STACK_SZ, RET = 0x10000000, 0x7E000000, 0x100000, 0x7F000000
 AV_PHYS, AV_END, KLOG_PHYS, KLOG_LEN = 0x035C6000, 0x048C6000, 0x035A5000, 0x20000
@@ -416,7 +416,7 @@ def main():
     # 3. test 2 on top of test 1; then tests 2, 3, 4 on stock
     r, t = run('test2', cam_from(mem['test1']))
     check(not r.bad and 'DONE: ' in t and 'READY (test 2 applied)' in t, 'test2 after test1: DONE, READY (test 2 applied)')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11'), (12, 'test12'), (13, 'test13')):
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11'), (12, 'test12'), (13, 'test13'), (14, 'test14'), (15, 'test15')):
         cam = Camera()
         r, t = run(name, cam)
         dn = diff(cam.mem)
@@ -485,6 +485,18 @@ def main():
     r, t = run('test13', cam)
     check(not r.bad and bytes(cam.mem) == pal_t12 and 'READY (test 13 applied)' in t.split('after:')[-1],
           'test13 on a 50-system camera: the same bytes as test12 there, and the step names itself')
+    drv_pal = next(b for b in fe['blocks'] if b['name'] == 'dfe_drv')
+    for n, name, nwords in ((14, 'test14', 12), (15, 'test15', 10)):
+        cam = cam_from(pal_stock, system='50')
+        r, t = run(name, cam)
+        dpal = diff(cam.mem, pal_t12)
+        check(not r.bad and ('READY (test %d applied)' % n) in t.split('after:')[-1] and len(dpal) == nwords
+              and all(P(drv_pal['va']) <= o < P(drv_pal['va']) + drv_pal['len'] for o in dpal),
+              '%s on a 50-system camera: test12 there plus %d bytes, all in the drive table' % (name, len(dpal)))
+        pal_tn = bytes(cam.mem)
+        cam = cam_from(pal_tn, system='50')
+        r, t = run('putback', cam)
+        check('READY (stock)' in t and bytes(cam.mem) == pal_stock, 'putback after %s on the 50-system camera: memory as before' % name)
     cam = cam_from(pal_t12, system='50')
     r, t = run('putback', cam)
     check('READY (stock)' in t and bytes(cam.mem) == pal_stock, 'putback after test12 on the 50-system camera: memory as before')
@@ -492,13 +504,15 @@ def main():
     r, t = run('putback', cam)
     check('READY (stock)' in t and bytes(cam.mem) == pal_stock, 'putback after test9 on the 50-system camera: memory as before')
     # 4. one test over another refuses
-    for over, under in (('test1', 'test2'), ('test3', 'test2'), ('test2', 'test4'), ('test4', 'test3'), ('test4', 'test5'), ('test3', 'test5'), ('test6', 'test3'), ('test3', 'test6'), ('test5', 'test6'), ('test7', 'test3'), ('test8', 'test7'), ('test3', 'test8'), ('test3', 'test9'), ('test9', 'test10'), ('test8', 'test9'), ('test9', 'test4'), ('test9', 'test11'), ('test3', 'test11'), ('test11', 'test10'), ('test11', 'test12'), ('test13', 'test11'), ('test9', 'test13'), ('test13', 'test12'), ('test12', 'test10')):
+    for over, under in (('test1', 'test2'), ('test3', 'test2'), ('test2', 'test4'), ('test4', 'test3'), ('test4', 'test5'), ('test3', 'test5'), ('test6', 'test3'), ('test3', 'test6'), ('test5', 'test6'), ('test7', 'test3'), ('test8', 'test7'), ('test3', 'test8'), ('test3', 'test9'), ('test9', 'test10'), ('test8', 'test9'), ('test9', 'test4'), ('test9', 'test11'), ('test3', 'test11'), ('test11', 'test10'), ('test11', 'test12'), ('test13', 'test11'), ('test9', 'test13'), ('test13', 'test12'), ('test12', 'test10'),
+                        ('test15', 'test14'), ('test15', 'test10'), ('test12', 'test14'), ('test12', 'test15'), ('test13', 'test14'), ('test10', 'test14'),
+                        ('test11', 'test15'), ('test14', 'test4')):
         cam = cam_from(mem[under])
         r, t = run(over, cam)
         check(not r.bad and 'run the put-back first' in t and not cam.writes and bytes(cam.mem) == mem[under],
               '%s over %s: NOT DONE, nothing written' % (over, under))
     # 5. put back
-    for name in ('test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'test12', 'test13'):
+    for name in ('test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'test12', 'test13', 'test14', 'test15'):
         cam = cam_from(mem[name])
         r, t = run('putback', cam)
         check(not r.bad and 'DONE: ' in t and 'READY (stock)' in t and bytes(cam.mem) == bytes(stock), 'putback after %s: memory equals 4.04 again' % name)
@@ -548,6 +562,36 @@ def main():
           and port_ch('test12') == port_ch('test13') and [(c['stock'], c['new'], c['size']) for c in port_ch('test12')] == [(3437, 3529, 2)] * 3
           and not port_ch('test11') and not port_ch('test9') and 6080 * 3529 <= 0x1800000,
           'test12 = test11 + the three port entries at 3529 lines; test13 = test9 + the same; 6080 x 3529 bytes fit the 0x1800000 block')
+    # v13: tests 14 and 15 = test 12 + the drive table's heights (twelve, or ten without the two inner-window heights)
+    for over, under in (('test14', 'test12'), ('test14', 'test11'), ('test14', 'test9'), ('test14', 'test3'), ('test14', 'test13'), ('test14', 'test10'),
+                        ('test14', 'test15'), ('test15', 'test12'), ('test15', 'test11'), ('test15', 'test9'), ('test15', 'test3'), ('test15', 'test13')):
+        cam = cam_from(mem[under])
+        r, t = run(over, cam)
+        n_over = int(over[4:])
+        check(not r.bad and 'DONE: ' in t and ('READY (test %d applied)' % n_over) in t and bytes(cam.mem) == mem[over],
+              '%s after %s: DONE, READY (test %d applied)' % (over, under, n_over))
+    drv_ch = lambda name: [c for c in steps[name]['front_end'] if c['block'] == 'dfe_drv']   # noqa: E731
+    nodrv = lambda name: [c for c in steps[name]['front_end'] if c['block'] != 'dfe_drv']   # noqa: E731
+    inner = [c for c in drv_ch('test14') if c['stock'] == 3376]
+    check(nodrv('test14') == steps['test12']['front_end'] and nodrv('test15') == steps['test12']['front_end']
+          and steps['test14']['timing'] == steps['test12']['timing'] == steps['test15']['timing']
+          and steps['test14']['sensor_sites'] == steps['test12']['sensor_sites'] == steps['test15']['sensor_sites']
+          and steps['test14']['records'] == steps['test12']['records'] == steps['test15']['records']
+          and drv_ch('test14') == drv_ch('test10') and len(drv_ch('test14')) == 12 and all(c['new'] == c['stock'] + 92 and c['size'] == 2 for c in drv_ch('test14'))
+          and sorted(c['word_offset'] for c in inner) == ['0x78', '0x9c'] and drv_ch('test15') == [c for c in drv_ch('test14') if c not in inner]
+          and not drv_ch('test12') and not drv_ch('test13'),
+          'test14 = test12 + the twelve drive-table heights of test10 (+ 92 each); test15 = test12 + ten of them (the two inner heights 3376 stay)')
+    d1214 = diff(cam_from(mem['test14']).mem, mem['test12'])
+    d1415 = diff(cam_from(mem['test15']).mem, mem['test14'])
+    drv13 = next(b for b in fe['blocks'] if b['name'] == 'dfe_drv')
+    words = lambda m: struct.unpack_from('<96H', m, P(drv13['va']))   # noqa: E731
+    w14, w15, w0 = words(mem['test14']), words(mem['test15']), words(stock)
+    check(len(d1214) == 12 and len(d1415) == 2 and all(P(drv13['va']) <= o < P(drv13['va']) + drv13['len'] for o in d1214 + d1415)
+          and sorted(w for w in w14 if 3300 <= w <= 3600) == [3468] * 2 + [3484] * 8 + [3529] * 2
+          and sorted(w for w in w15 if 3300 <= w <= 3600) == [3376] * 2 + [3484] * 8 + [3529] * 2
+          and [i for i in range(96) if w14[i] != w0[i]] == sorted(int(c['word_offset'], 16) // 2 for c in drv_ch('test14')),
+          'test14 differs from test12 in %d bytes and test15 from test14 in %d, all in the drive table: heights 3484 x 8, 3529 x 2, inner 3468 (test14) or 3376 (test15)'
+          % (len(d1214), len(d1415)))
     d1112 = diff(cam_from(mem['test12']).mem, mem['test11'])
     check(len(d1112) == 3, 'test12 differs from test11 in %d bytes (one per port entry)' % len(d1112))
     t3, t9 = steps['test3'], steps['test9']
@@ -570,7 +614,7 @@ def main():
           and steps['test8']['rows'] == 3596 and steps['test8']['first_row'] == 327 and steps['test8']['timing'] == steps['test3']['timing']
           and steps['test8']['records'] == steps['test3']['records'],
           'test7 = test3 with the pair 815 / 1810; test8 = test3 with 3596 sensor rows; nothing else differs')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11'), (12, 'test12'), (13, 'test13')):
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11'), (12, 'test12'), (13, 'test13'), (14, 'test14'), (15, 'test15')):
         r, t = run('dump', cam_from(mem[name]))
         check(('VERDICT READY (test %d applied)' % n) in t, 'dump after %s: READY (test %d applied)' % (name, n))
     # 5b. the second camera run's state (v2 test 2: sensor + records, timing pair still stock) is reported as partly applied

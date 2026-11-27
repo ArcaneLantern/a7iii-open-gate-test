@@ -1,19 +1,20 @@
-# A7 III kit 2 v12: two new tests
+# A7 III kit 2 v13: two new tests
 
-**If you ran kit 2 v11:** thank you. Test 11 recorded the same frame as test 9, so sending the lines faster was not the answer. But the dump finally copied the camera's own log, and the log shows what is wrong.
+**If you ran kit 2 v12:** thank you. Both tests froze the picture after one frame, and the dumps you took in that state showed why.
 
-**What the log shows.** With a test applied the camera's firmware reports, for every frame, that one stage of its front end is still waiting for lines when the frame ends. That stage reads the frame out of memory, and the memory is set to hold 3,437 lines. Tests 9 and 11 told everything else about 3,529 lines, but not this. So the last rows are never written: that is the noise at the bottom.
+**What the dumps show.** The fault of the earlier tests is gone: the camera no longer restarts the picture for every frame. What happens now is that the first frame goes through, and then one stage of the camera's front end waits for 92 more lines before it can begin the next frame. 92 is exactly the number of rows these tests add. The lines never come, so the camera keeps showing the one frame it has. The rest of the camera carries on, which is why the menus still worked.
 
-**What is new.**
+**What is new.** One table in the front end still held the old picture height.
 
-- **test 12** is test 11 plus that memory setting at 3,529 lines.
-- **test 13** is test 9 plus the same. It keeps the stock line speed, so the two together show whether the line speed matters.
+- **test 14** is test 12 plus that table at the new height (twelve numbers).
+- **test 15** is test 12 plus ten of the twelve. An earlier test of this table gave a brightness step between the left and right halves of the picture. Test 15 leaves out the two numbers most likely to have caused it.
 
-**Three things to get right. Please check each:**
+**Four things to get right. Please check each:**
 
 1. **Record Setting must be 24p (NTSC) or 25p (PAL), full frame.** At 30p, or in HD, the camera uses a different mode and the tests do nothing.
 2. **Take the battery out for ten seconds before each part.** It resets the camera, and the log only keeps the first lines after a start.
 3. **Leave the dial on movie when you plug USB back in for the dump.**
+4. **If the picture freezes again:** press record for about 3 seconds anyway, then do the dump as written. A clip of the frozen frame and that dump are exactly what we need.
 
 **For each clip, please:** hold the camera still on something plain (a wall or a sheet of paper) for the first 3 seconds, then move it around for the rest.
 
@@ -26,8 +27,8 @@ Allow about 15 minutes. You need the A7 III on firmware 4.04, a charged battery,
 | Step | Launcher | What it does |
 | --- | --- | --- |
 | dump | `open_gate_dump` | Read-only. Saves the camera's memory facts, the timing of the last frame and the camera's own log. |
-| test 12 | `open_gate_test12` | **New.** Test 11 plus the front end's frame memory at 3,529 lines. Also sets `no restart` and the log. |
-| test 13 | `open_gate_test13` | **New.** Test 9 plus the same memory setting. Also sets `no restart` and the log. |
+| test 14 | `open_gate_test14` | **New.** Test 12 plus the front end's table at the new height. Also sets `no restart` and the log. |
+| test 15 | `open_gate_test15` | **New.** Test 12 plus ten of that table's twelve numbers. Also sets `no restart` and the log. |
 | put back | `open_gate_putback` | Puts the 4.04 bytes back and clears the switches. Not needed in this run: the battery does it. |
 
 **Do not use `open_gate_nocheck` or `open_gate_test10`.**
@@ -41,28 +42,33 @@ Windows launchers are `windows/<name>.cmd`. On macOS, type `bash ` (with a trail
 
 ## The run
 
-### Part 1: test 12
+### Part 1: test 14
 
 1. **Battery out for ten seconds**, then back in. Turn the camera on, dial on a stills mode, plug in USB.
-2. Run **test 12**. Check it says `Outcome: DONE`.
-3. Unplug USB. Turn the dial to **movie**. Watch for about 15 seconds: smooth or stutter, noise at the bottom edge or not, any picture at all. Record about 6 seconds: still on something plain, then moving.
-4. Leave the dial on movie. Plug in USB. Run **dump**. It should say `VERDICT READY (test 12 applied)`.
+2. Run **test 14**. Check it says `Outcome: DONE`.
+3. Unplug USB. Turn the dial to **movie**. Watch for about 15 seconds:
+   - does the picture keep moving, or does it stand still;
+   - smooth or stutter;
+   - noise at the bottom edge or not;
+   - a brightness or colour step down the middle or not.
+4. Record about 6 seconds: still on something plain, then moving. If the picture stands still, record about 3 seconds anyway.
+5. Leave the dial on movie. Plug in USB. Run **dump**. It should say `VERDICT READY (test 14 applied)`.
 
-### Part 2: test 13
+### Part 2: test 15
 
-5. **Battery out for ten seconds**, then back in. Turn the camera on, dial on a stills mode, plug in USB.
-6. Run **test 13**. Check it says `Outcome: DONE`.
-7. Unplug USB. Turn the dial to **movie**. Watch and record as in step 3.
-8. Leave the dial on movie. Plug in USB. Run **dump**. It should say `VERDICT READY (test 13 applied)`. On a PAL camera it says `test 12 applied`: there the two tests are the same, and one part is enough.
-9. **Battery out for ten seconds** to finish.
+6. **Battery out for ten seconds**, then back in. Turn the camera on, dial on a stills mode, plug in USB.
+7. Run **test 15**. Check it says `Outcome: DONE`.
+8. Unplug USB. Turn the dial to **movie**. Watch and record as in steps 3 and 4.
+9. Leave the dial on movie. Plug in USB. Run **dump**. It should say `VERDICT READY (test 15 applied)`.
+10. **Battery out for ten seconds** to finish.
 
-**If the camera shows no picture, freezes or does not respond:** take the battery out for ten seconds and tell us what the screen showed. If USB still works in that state, a **dump** before the battery pull helps a lot.
+**If the camera shows no picture or does not respond:** take the battery out for ten seconds and tell us what the screen showed. If USB still works in that state, a **dump** before the battery pull helps a lot.
 
 ## Please send back
 
 - The new `M3K2_…` folders in `windows/camera_private`, zipped.
-- The two clips at full 3840×2160, named so we can tell which part each is.
-- One line per part: smooth or stuttering, noise at the bottom or not, anything else you saw.
+- The clips at full 3840×2160, named so we can tell which part each is.
+- One line per part: moving or standing still, smooth or stuttering, noise at the bottom or not, a step down the middle or not, anything else you saw.
 
 **Please send the zips privately, not in a public channel.** The dump copies parts of the camera's working memory, its kernel log and the camera's own log as text. MAC addresses are blanked and the processor's serial line is not copied, but the camera's own log may name the camera or the lens by serial number. We cannot promise that nothing in there identifies the camera.
 

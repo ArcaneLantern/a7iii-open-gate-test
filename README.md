@@ -1,6 +1,33 @@
 # A7 III open-gate test kits (firmware 4.04)
 
-## Kit 2 v12 (2026-11-27): open-gate tests and debug dump
+## Kit 2 v13 (2026-11-27): open-gate tests and debug dump
+
+**v13, after the v12 run.** Tests 12 and 13 froze the picture after one frame. The camera stayed responsive and the dumps were taken in that state.
+
+What v12 was for worked: the log no longer has `Lost CAMOUT_V`, `Ofmt_Mwrap::Deactivate() status wait failed` or `S-Ele Refresh`, the refresh counter is 0, and the write ports reach the end of a 3529-line frame. The new fault, the same in both tests:
+
+1. The first frame passes every stage of the front end.
+2. In the second frame the image generator does not start. Its start request stays pending.
+3. The link generator before it stands at line 156.
+4. Error interrupts of both input channels come once per line (`camIntHandler1: fact=c0`).
+5. The output side keeps running and sends the stored frame again and again.
+
+The image stage starts at link line 64, and 156 = 64 + 92, the rows the tests add. So the image stage ends the first frame 92 lines short and finishes it with the next frame's first lines, missing its own start. The log of test 11 has the same thing from the other side: a status print with the image generator standing at line 3442 of 3533 while the next frame's link generator is at line 64.
+
+The front end's drive table is the one front-end table tests 12 and 13 left at the stock height: crops of 3392 lines and an output size of 3437 lines per strip, where every list says 3484 and 3529. That it is what holds the 92 lines back is by elimination, not read from code.
+
+| Step | What it changes |
+| --- | --- |
+| test 14 | test 12 plus the drive table's twelve heights raised by 92 (the words of test 10) |
+| test 15 | test 12 plus ten of them: the two inner-window heights (3376) stay stock |
+
+- Test 10 changed the same twelve words and showed a brightness step between the two strips. It still had the stock ports and the restart of every frame, so it says nothing about the stall. Test 15 is there to see whether the two inner heights made that step.
+- If both tests stall, the status print gives the link generator's line again: 156 means the drive table is not it.
+- **Still open:** fine red-blue row stripes in every test clip since test 3.
+
+**Tester steps: [K2_TEST.md](K2_TEST.md).**
+
+### Kit 2 v12 (2026-11-27): the frame-memory ports
 
 **v12, after the v11 run.** Test 11 (the lines sent 2.7 % faster) recorded the same frame as test 9: picture to row 2119, noise below. So the line period was not the cause, and the time budget given for v11 is withdrawn. It was a coincidence of two numbers, one of them from a row-to-line conversion that was off by nine lines.
 
@@ -155,7 +182,7 @@ The firmware shows a likely cause. Test 2 made the front-end records 624 lines t
 
 **Tester steps: [K2_TEST.md](K2_TEST.md).** Everything is changed only in the camera's working memory (RAM). The put-back step, a restart, or a battery pull undoes it.
 
-Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built eighteen times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
+Each step is one service session that loads a small helper library on the camera (`windows/tools/camera_tests/K2_open_gate/helper/m3og.c`, built twenty times). The library is written to the service work partition at `/tmp/jiritsu/libJit.so`. The camera loads it, which runs the helper once. The kit then deletes the library. The helper writes its result to a RAM disk (`/tmp_network`; `/tmp/jiritsu` if that fails), from where it is read back and deleted.
 
 | Step | Launcher | Picture rows | Squeeze | Line period (59.94 / 50 system) | Line rate above stock |
 | --- | --- | --- | --- | --- | --- |
@@ -190,7 +217,7 @@ The test design (`og_m3_v2`) comes from the 4.04 firmware:
 - The front-end record of the 4K full-frame mode holds 65 height fields and the vertical scaler step.
 - The camera core's drive table holds the cycle pair. In every movie and live-view mode that has one, its line count covers the whole sensor frame and the pair fits inside the frame time. The new line periods leave the gap the 50 system leaves in stock.
 - The firmware's own code, run in an emulator, programs the new window and builds the drive table from the new pair. The one extra byte it changes is written too.
-- The eighteen helper builds were run in an emulator against the 4.04 memory image: 258 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, the two switch steps (one bit each, other bits kept, cleared by put back), and a full application log staying under the RAM disk's size.
+- The twenty helper builds were run in an emulator against the 4.04 memory image: 306 checks, including both TV systems, roll-back, every refusal, the state v2's test 2 left, the two switch steps (one bit each, other bits kept, cleared by put back), and a full application log staying under the RAM disk's size.
 
 What is not known: whether the pair is the only thing the camera core needs, and whether the front end keeps up with the shorter line period. If a test restarts the camera, the dump taken right after now includes the application log, where the firmware writes which check gave up.
 
