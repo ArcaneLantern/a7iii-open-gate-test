@@ -44,7 +44,13 @@
  *             missed its second start and the link generator stood at line 156 = 64 + 92 (M3-F060). The drive
  *             table was the one front-end table still at the stock height.
  *   level 54  TEST 15 (v13). Test 12 plus ten of those heights: the two inner-window heights stay stock.
- *             Tests 9 to 15 also set the no-restart bit (level 41) and the status-print bits (level 43) themselves.
+ *   level 55  TEST 16 (v14). Test 12 with the sensor window at first row 329 and the sensor's block registers left at
+ *             the 4K column's own values. Tests 12 to 15 stood still after one frame: the link and receiver
+ *             generators were restarted while the sensor's frame was still arriving (M3-F065). Every test since
+ *             test 3 had 327 sensor rows between the scan start and the window; stock has 45, this test 1.
+ *   level 56  TEST 17 (v14). Test 12 with first row 281 and the block registers the stock rule gives for it
+ *             (2 / 19 / 25): 117 rows before the window, and the window ends at the stock last row.
+ *             Tests 9 to 17 also set the no-restart bit (level 41) and the status-print bits (level 43) themselves.
  *   level 31  PUT BACK. Writes the 4.04 bytes back wherever a test changed them, and clears the switch bits below.
  *   level 41  NO RESTART (v4). Sets bit 0x40 of the firmware's own switch byte for its output-sync refresh loop: the loop
  *             keeps retrying but never forces the restart. One byte.
@@ -91,18 +97,18 @@ typedef unsigned long long u64;
 #ifndef LEVEL
 #define LEVEL 1
 #endif
-#if LEVEL != 1 && LEVEL != 11 && !(LEVEL >= 21 && LEVEL <= 30) && LEVEL != 31 && LEVEL != 41 && LEVEL != 42 && LEVEL != 43 && !(LEVEL >= 51 && LEVEL <= 54)
-#error "LEVEL must be 1, 11, 21 to 30, 31, 41, 42, 43 or 51 to 54"
+#if LEVEL != 1 && LEVEL != 11 && !(LEVEL >= 21 && LEVEL <= 30) && LEVEL != 31 && LEVEL != 41 && LEVEL != 42 && LEVEL != 43 && !(LEVEL >= 51 && LEVEL <= 56)
+#error "LEVEL must be 1, 11, 21 to 30, 31, 41, 42, 43 or 51 to 56"
 #endif
 #define GUARD_ONLY (LEVEL == 41 || LEVEL == 42 || LEVEL == 43)
-/* v10: tests 9 to 15 also set the no-restart bit and the status-print bits themselves (one session instead of three) */
-#define TEST_SETS_FLAGS (LEVEL == 28 || LEVEL == 29 || LEVEL == 30 || (LEVEL >= 51 && LEVEL <= 54))
-/* the test a level writes: test1 = 0, test2..test11 = 1..10 (levels 21..30), test12..test15 = 11..14 (levels 51..54) */
+/* v10: tests 9 to 17 also set the no-restart bit and the status-print bits themselves (one session instead of three) */
+#define TEST_SETS_FLAGS (LEVEL == 28 || LEVEL == 29 || LEVEL == 30 || (LEVEL >= 51 && LEVEL <= 56))
+/* the test a level writes: test1 = 0, test2..test11 = 1..10 (levels 21..30), test12..test17 = 11..16 (levels 51..56) */
 #if LEVEL == 11
 #define TEST_IDX 0
 #elif LEVEL >= 21 && LEVEL <= 30
 #define TEST_IDX (LEVEL - 20)
-#elif LEVEL >= 51 && LEVEL <= 54
+#elif LEVEL >= 51 && LEVEL <= 56
 #define TEST_IDX (LEVEL - 40)
 #endif
 #define WRITES (LEVEL != 1)
@@ -110,11 +116,11 @@ typedef unsigned long long u64;
 struct ident { const char *name; u32 va; u32 len; u8 sha[32]; };
 /* poff[n]: where in PATCHES the bytes of test n+1 that differ from stock start; npatch[n] triplets {offset low,
  * offset high, value} (v11: offsets into one table instead of a pointer each, to keep the library in one packet) */
-struct block { const char *name; u32 va; u32 len; const u8 *stock; u16 poff[15]; u8 npatch[15]; };
+struct block { const char *name; u32 va; u32 len; const u8 *stock; u16 poff[17]; u8 npatch[17]; };
 struct range { const char *name; u32 va; u32 len; };
 #include "m3og_design.h"
 
-#define VERSION "m3og_v13"
+#define VERSION "m3og_v14"
 #define KLOG_PHYS 0x035A5000u
 #define KLOG_LEN 0x20000u
 #define RESULT_CAP (900u * 1024u)        /* /tmp_network is a 1024 KB tmpfs: the log copies stop here */
@@ -454,12 +460,12 @@ static u8 cur_pool[POOL_STEP];
 static u8 tgt_pool[N_STEPS][POOL_STEP];
 #define CUR(i) (cur_pool + boff[i])
 #define TGT(n, i) (tgt_pool[n] + boff[i])
-static u16 eq[N_BLOCKS];                /* bit 0: every byte is the stock byte; bit n: every byte is test n's byte */
-#if N_STEPS != 15
-#error "the state names below are for fifteen tests (eq[] has one bit for stock and one per test: sixteen)"
+static u32 eq[N_BLOCKS];                /* bit 0: every byte is the stock byte; bit n: every byte is test n's byte */
+#if N_STEPS != 17
+#error "the state names below are for seventeen tests (eq[] has one bit for stock and one per test: thirty-two)"
 #endif
 enum { ST_STOCK, ST_T1, ST_MIXED = ST_T1 + N_STEPS, ST_OTHER, ST_UNREAD };
-static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "TEST3", "TEST4", "TEST5", "TEST6", "TEST7", "TEST8", "TEST9", "TEST10", "TEST11", "TEST12", "TEST13", "TEST14", "TEST15",
+static const char *const STATE_NAME[] = {"STOCK", "TEST1", "TEST2", "TEST3", "TEST4", "TEST5", "TEST6", "TEST7", "TEST8", "TEST9", "TEST10", "TEST11", "TEST12", "TEST13", "TEST14", "TEST15", "TEST16", "TEST17",
                                          "MIXED", "OTHER", "NOT READ"};
 
 static void take_block(int i, const struct block *b)
@@ -513,7 +519,7 @@ static int block_state(int i)
     }
     int st = ST_MIXED;
     eq[i] = ds == 0;
-    for (int n = N_STEPS - 1; n >= 0; n--) if (d[n] == 0) { eq[i] |= (u16)(2u << n); st = ST_T1 + n; }
+    for (int n = N_STEPS - 1; n >= 0; n--) if (d[n] == 0) { eq[i] |= 2u << n; st = ST_T1 + n; }
     if (ds == 0) st = ST_STOCK;
     else if (st == ST_MIXED && other) st = ST_OTHER;
     ps("block "); ps(b->name); ps(" va "); px(b->va); ps(" len "); phex(b->len, 4);
@@ -833,6 +839,10 @@ static const char *const LEVEL_NAME =
     "test14";
 #elif LEVEL == 54
     "test15";
+#elif LEVEL == 55
+    "test16";
+#elif LEVEL == 56
+    "test17";
 #elif LEVEL == 41
     "norestart";
 #elif LEVEL == 42

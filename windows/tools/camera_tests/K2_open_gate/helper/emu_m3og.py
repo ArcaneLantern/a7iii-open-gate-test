@@ -28,7 +28,7 @@ ROOT = HERE.parents[2]
 AVCAM = ROOT / 'work' / 'extracted' / 'a7m3_404' / '0700_part_image' / 'dev' / 'nflasha3' / 'av-cam.bin'
 KEMCO = ROOT / 'work' / 'extracted' / 'a7m3_404' / 'update' / '0800_appli' / 'setting' / 'kemco.txt'
 DESIGN = ROOT / 'modding' / 'designs' / 'og_m3_v2.json'
-LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'test12', 'test13', 'test14', 'test15', 'putback', 'norestart', 'nocheck', 'dfelog')}
+LIBS = {n: HERE / ('libJit_m3og_%s.so' % n) for n in ('dump', 'test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'test12', 'test13', 'test14', 'test15', 'test16', 'test17', 'putback', 'norestart', 'nocheck', 'dfelog')}
 
 BASE, STACK, STACK_SZ, RET = 0x10000000, 0x7E000000, 0x100000, 0x7F000000
 AV_PHYS, AV_END, KLOG_PHYS, KLOG_LEN = 0x035C6000, 0x048C6000, 0x035A5000, 0x20000
@@ -416,7 +416,7 @@ def main():
     # 3. test 2 on top of test 1; then tests 2, 3, 4 on stock
     r, t = run('test2', cam_from(mem['test1']))
     check(not r.bad and 'DONE: ' in t and 'READY (test 2 applied)' in t, 'test2 after test1: DONE, READY (test 2 applied)')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11'), (12, 'test12'), (13, 'test13'), (14, 'test14'), (15, 'test15')):
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11'), (12, 'test12'), (13, 'test13'), (14, 'test14'), (15, 'test15'), (16, 'test16'), (17, 'test17')):
         cam = Camera()
         r, t = run(name, cam)
         dn = diff(cam.mem)
@@ -497,6 +497,17 @@ def main():
         cam = cam_from(pal_tn, system='50')
         r, t = run('putback', cam)
         check('READY (stock)' in t and bytes(cam.mem) == pal_stock, 'putback after %s on the 50-system camera: memory as before' % name)
+    for n, name in ((16, 'test16'), (17, 'test17')):
+        cam = cam_from(pal_stock, system='50')
+        r, t = run(name, cam)
+        spal = sorted(P(s['va']) for s in steps[name]['sensor_sites'] + steps['test12']['sensor_sites'])
+        dpal = diff(cam.mem, pal_t12)
+        check(not r.bad and ('READY (test %d applied)' % n) in t.split('after:')[-1] and dpal and all(o in spal for o in dpal) and sensor_ok(cam.mem, name),
+              '%s on a 50-system camera: test12 there except %d sensor bytes' % (name, len(dpal)))
+        pal_tn = bytes(cam.mem)
+        cam = cam_from(pal_tn, system='50')
+        r, t = run('putback', cam)
+        check('READY (stock)' in t and bytes(cam.mem) == pal_stock, 'putback after %s on the 50-system camera: memory as before' % name)
     cam = cam_from(pal_t12, system='50')
     r, t = run('putback', cam)
     check('READY (stock)' in t and bytes(cam.mem) == pal_stock, 'putback after test12 on the 50-system camera: memory as before')
@@ -506,13 +517,15 @@ def main():
     # 4. one test over another refuses
     for over, under in (('test1', 'test2'), ('test3', 'test2'), ('test2', 'test4'), ('test4', 'test3'), ('test4', 'test5'), ('test3', 'test5'), ('test6', 'test3'), ('test3', 'test6'), ('test5', 'test6'), ('test7', 'test3'), ('test8', 'test7'), ('test3', 'test8'), ('test3', 'test9'), ('test9', 'test10'), ('test8', 'test9'), ('test9', 'test4'), ('test9', 'test11'), ('test3', 'test11'), ('test11', 'test10'), ('test11', 'test12'), ('test13', 'test11'), ('test9', 'test13'), ('test13', 'test12'), ('test12', 'test10'),
                         ('test15', 'test14'), ('test15', 'test10'), ('test12', 'test14'), ('test12', 'test15'), ('test13', 'test14'), ('test10', 'test14'),
-                        ('test11', 'test15'), ('test14', 'test4')):
+                        ('test11', 'test15'), ('test14', 'test4'),
+                        ('test16', 'test12'), ('test17', 'test16'), ('test16', 'test17'), ('test12', 'test16'), ('test14', 'test16'), ('test16', 'test3'),
+                        ('test17', 'test6'), ('test9', 'test17')):
         cam = cam_from(mem[under])
         r, t = run(over, cam)
         check(not r.bad and 'run the put-back first' in t and not cam.writes and bytes(cam.mem) == mem[under],
               '%s over %s: NOT DONE, nothing written' % (over, under))
     # 5. put back
-    for name in ('test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'test12', 'test13', 'test14', 'test15'):
+    for name in ('test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8', 'test9', 'test10', 'test11', 'test12', 'test13', 'test14', 'test15', 'test16', 'test17'):
         cam = cam_from(mem[name])
         r, t = run('putback', cam)
         check(not r.bad and 'DONE: ' in t and 'READY (stock)' in t and bytes(cam.mem) == bytes(stock), 'putback after %s: memory equals 4.04 again' % name)
@@ -592,6 +605,32 @@ def main():
           and [i for i in range(96) if w14[i] != w0[i]] == sorted(int(c['word_offset'], 16) // 2 for c in drv_ch('test14')),
           'test14 differs from test12 in %d bytes and test15 from test14 in %d, all in the drive table: heights 3484 x 8, 3529 x 2, inner 3468 (test14) or 3376 (test15)'
           % (len(d1214), len(d1415)))
+    # v14: tests 16 and 17 = test 12 with another sensor window and the block registers the stock columns' rule gives
+    sens = lambda name: {int(s['reg'], 16): int(s['new'], 16) for s in steps[name]['sensor_sites']}   # noqa: E731
+    sstock = {int(s['reg'], 16): int(s['stock'], 16) for s in steps['test12']['sensor_sites']}
+    same = lambda a, b: all(steps[a][k] == steps[b][k] for k in ('front_end', 'records', 'timing', 'rows', 'head_lines', 'picture_rows', 'scaler_step'))   # noqa: E731
+    s12, s16, s17 = sens('test12'), sens('test16'), sens('test17')
+    first = lambda s: s[0x728] | s[0x729] << 8   # noqa: E731
+    rule = lambda s: (s[0x2C], s[0x2E], s[0x12]) == (2 * (first(s) // 164), 21 - s[0x2C], 27 - s[0x2C])   # noqa: E731
+    pre = lambda s: first(s) - 82 * s[0x2C]   # noqa: E731
+    check(same('test16', 'test12') and same('test17', 'test12')
+          and (first(sstock), 2 * (sstock[0x72A] | sstock[0x72B] << 8), pre(sstock)) == (373, 3412, 45) and rule(sstock)
+          and (first(s12), pre(s12)) == (327, 327) and not rule(s12)
+          and (first(s16), 2 * (s16[0x72A] | s16[0x72B] << 8), pre(s16)) == (329, 3504, 1) and rule(s16)
+          and (s16[0x2C], s16[0x2E], s16[0x12]) == (sstock[0x2C], sstock[0x2E], sstock[0x12])
+          and (first(s17), 2 * (s17[0x72A] | s17[0x72B] << 8), pre(s17)) == (281, 3504, 117) and rule(s17) and (s17[0x2C], s17[0x2E], s17[0x12]) == (2, 19, 25)
+          and first(s17) + 3504 == 373 + 3412 and (373 - first(s16)) % 4 == 0 and (373 - first(s17)) % 4 == 0,
+          'test16 / test17 = test12 with first row 329 / 281 and block registers by the stock rule: 1 / 117 rows before the window (stock 45, test12 327)')
+    d16 = diff(cam_from(mem['test16']).mem, mem['test12'])
+    d17 = diff(cam_from(mem['test17']).mem, mem['test12'])
+    sva = sorted(P(s['va']) for s in steps['test12']['sensor_sites'])
+    check(len(d16) == 4 and len(d17) == 4 and all(o in sva for o in d16 + d17)
+          and len([o for o in diff(cam_from(mem['test16']).mem) if o in sva]) == 2 and len([o for o in diff(cam_from(mem['test17']).mem) if o in sva]) == 5,
+          'test16 and test17 each differ from test12 in 4 bytes of the sensor list; against stock test16 changes 2 sensor bytes, test17 5')
+    for name in ('test16', 'test17'):
+        cam = cam_from(mem[name])
+        r, t = run(name, cam)
+        check(not r.bad and 'NOTHING TO DO' in t and not cam.writes, '%s again: NOTHING TO DO, no write' % name)
     d1112 = diff(cam_from(mem['test12']).mem, mem['test11'])
     check(len(d1112) == 3, 'test12 differs from test11 in %d bytes (one per port entry)' % len(d1112))
     t3, t9 = steps['test3'], steps['test9']
@@ -614,7 +653,7 @@ def main():
           and steps['test8']['rows'] == 3596 and steps['test8']['first_row'] == 327 and steps['test8']['timing'] == steps['test3']['timing']
           and steps['test8']['records'] == steps['test3']['records'],
           'test7 = test3 with the pair 815 / 1810; test8 = test3 with 3596 sensor rows; nothing else differs')
-    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11'), (12, 'test12'), (13, 'test13'), (14, 'test14'), (15, 'test15')):
+    for n, name in ((2, 'test2'), (3, 'test3'), (4, 'test4'), (5, 'test5'), (6, 'test6'), (7, 'test7'), (8, 'test8'), (9, 'test9'), (10, 'test10'), (11, 'test11'), (12, 'test12'), (13, 'test13'), (14, 'test14'), (15, 'test15'), (16, 'test16'), (17, 'test17')):
         r, t = run('dump', cam_from(mem[name]))
         check(('VERDICT READY (test %d applied)' % n) in t, 'dump after %s: READY (test %d applied)' % (name, n))
     # 5b. the second camera run's state (v2 test 2: sensor + records, timing pair still stock) is reported as partly applied
